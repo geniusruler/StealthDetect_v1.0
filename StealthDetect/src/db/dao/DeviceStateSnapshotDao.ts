@@ -1,6 +1,3 @@
-// TypeScript
-// `StealthDetect/src/db/dao/DeviceStateSnapshotDao.ts`
-
 import { getDb } from '../db';
 
 export interface DeviceStateSnapshot {
@@ -53,13 +50,14 @@ export const DeviceStateSnapshotDao = {
 
     getByScanId: async (scan_id: string): Promise<DeviceStateSnapshot[]> => {
         const db = await getDb();
-        const res = await db.query<DeviceStateSnapshot>(
-            `SELECT * FROM DeviceStateSnapshot 
-       WHERE scan_id = ? 
-       ORDER BY created_at DESC;`,
+        const res = await db.query(
+            `SELECT * FROM DeviceStateSnapshot
+             WHERE scan_id = ?
+             ORDER BY created_at DESC;`,
             [scan_id]
         );
-        return res.values ?? [];
+        const rows = (res.values ?? []) as DeviceStateSnapshot[];
+        return rows;
     },
 
     deleteByScanId: async (scan_id: string): Promise<void> => {

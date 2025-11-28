@@ -1,6 +1,3 @@
-// TypeScript
-// `StealthDetect/src/db/dao/AuthDao.ts`
-
 import { getDb } from '../db';
 
 export interface AuthState {
@@ -37,13 +34,13 @@ export const AuthDao = {
 
     getActiveSession: async (user_id: string): Promise<AuthState | null> => {
         const db = await getDb();
-        const res = await db.query<AuthState>(
+        const res = await db.query(
             `SELECT * FROM AuthState
              WHERE user_id = ? AND logged_out_at IS NULL
              ORDER BY logged_in_at DESC LIMIT 1;`,
             [user_id]
         );
-        const rows = res.values ?? [];
+        const rows = (res.values ?? []) as AuthState[];
         return rows[0] ?? null;
     },
 
@@ -61,13 +58,14 @@ export const AuthDao = {
 
     getHistory: async (user_id: string): Promise<AuthState[]> => {
         const db = await getDb();
-        const res = await db.query<AuthState>(
+        const res = await db.query(
             `SELECT * FROM AuthState
              WHERE user_id = ?
              ORDER BY logged_in_at DESC;`,
             [user_id]
         );
-        return res.values ?? [];
+        const rows = (res.values ?? []) as AuthState[];
+        return rows;
     },
 
     deleteById: async (session_id: string): Promise<void> => {

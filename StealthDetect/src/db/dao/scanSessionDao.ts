@@ -1,6 +1,3 @@
-// TypeScript
-// `StealthDetect/src/db/dao/scanSessionDao.ts`
-
 import { getDb } from '../db';
 
 export interface ScanSession {
@@ -31,7 +28,7 @@ export const ScanSessionDao = {
         } = session;
 
         await db.run(
-            `INSERT OR REPLACE INTO ScanSession 
+            `INSERT OR REPLACE INTO ScanSession
        (scan_id, user_id, started_at, ended_at, mode, status, app_version)
        VALUES (?, ?, ?, ?, ?, ?, ?);`,
             [
@@ -48,19 +45,20 @@ export const ScanSessionDao = {
 
     getAll: async (): Promise<ScanSession[]> => {
         const db = await getDb();
-        const res = await db.query<ScanSession>(
+        const res = await db.query(
             `SELECT * FROM ScanSession ORDER BY started_at DESC;`
         );
-        return res.values ?? [];
+        const rows = (res.values ?? []) as ScanSession[];
+        return rows;
     },
 
     getById: async (scan_id: string): Promise<ScanSession | null> => {
         const db = await getDb();
-        const res = await db.query<ScanSession>(
+        const res = await db.query(
             `SELECT * FROM ScanSession WHERE scan_id = ?;`,
             [scan_id]
         );
-        const rows = res.values ?? [];
+        const rows = (res.values ?? []) as ScanSession[];
         return rows[0] ?? null;
     },
 

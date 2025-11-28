@@ -1,6 +1,3 @@
-// TypeScript
-// `StealthDetect/src/db/dao/userDao.ts`
-
 import { getDb } from '../db';
 
 export interface User {
@@ -27,7 +24,7 @@ export const UserDao = {
         } = user;
 
         await db.run(
-            `INSERT OR REPLACE INTO User 
+            `INSERT OR REPLACE INTO User
                (user_id, username, duress_pin, real_pin, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?);`,
             [
@@ -43,21 +40,21 @@ export const UserDao = {
 
     getById: async (user_id: string): Promise<User | null> => {
         const db = await getDb();
-        const res = await db.query<User>(
+        const res = await db.query(
             `SELECT * FROM User WHERE user_id = ? LIMIT 1;`,
             [user_id]
         );
-        const rows = res.values ?? [];
+        const rows = (res.values ?? []) as User[];
         return rows[0] ?? null;
     },
 
     getByUsername: async (username: string): Promise<User | null> => {
         const db = await getDb();
-        const res = await db.query<User>(
+        const res = await db.query(
             `SELECT * FROM User WHERE username = ? LIMIT 1;`,
             [username]
         );
-        const rows = res.values ?? [];
+        const rows = (res.values ?? []) as User[];
         return rows[0] ?? null;
     },
 

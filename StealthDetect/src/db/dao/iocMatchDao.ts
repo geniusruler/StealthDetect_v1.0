@@ -1,6 +1,3 @@
-// TypeScript
-// `StealthDetect/src/db/dao/iocMatchDao.ts`
-
 import { getDb } from '../db';
 
 export interface IOCMatch {
@@ -44,27 +41,28 @@ export const IOCMatchDao = {
                 confidence,
                 severity,
             ]
-        );w
+        );
     },
 
     getByScanId: async (scan_id: string): Promise<IOCMatch[]> => {
         const db = await getDb();
-        const res = await db.query<IOCMatch>(
-            `SELECT * FROM IOCMatch 
-       WHERE scan_id = ? 
-       ORDER BY severity DESC;`,
+        const res = await db.query(
+            `SELECT * FROM IOCMatch
+             WHERE scan_id = ?
+             ORDER BY severity DESC;`,
             [scan_id]
         );
-        return res.values ?? [];
+        const rows = (res.values ?? []) as IOCMatch[];
+        return rows;
     },
 
     getById: async (match_id: string): Promise<IOCMatch | null> => {
         const db = await getDb();
-        const res = await db.query<IOCMatch>(
+        const res = await db.query(
             `SELECT * FROM IOCMatch WHERE match_id = ?;`,
             [match_id]
         );
-        const rows = res.values ?? [];
+        const rows = (res.values ?? []) as IOCMatch[];
         return rows[0] ?? null;
     },
 

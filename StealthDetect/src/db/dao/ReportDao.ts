@@ -1,6 +1,3 @@
-// TypeScript
-// `StealthDetect/src/db/dao/ReportDao.ts`
-
 import { getDb } from '../db';
 
 export interface Report {
@@ -36,22 +33,23 @@ export const ReportDao = {
 
     getByScanId: async (scan_id: string): Promise<Report[]> => {
         const db = await getDb();
-        const res = await db.query<Report>(
+        const res = await db.query(
             `SELECT * FROM Report 
        WHERE scan_id = ? 
        ORDER BY created_at DESC;`,
             [scan_id]
         );
-        return res.values ?? [];
+        const rows = (res.values ?? []) as Report[];
+        return rows;
     },
 
     getById: async (report_id: string): Promise<Report | null> => {
         const db = await getDb();
-        const res = await db.query<Report>(
+        const res = await db.query(
             `SELECT * FROM Report WHERE report_id = ?;`,
             [report_id]
         );
-        const rows = res.values ?? [];
+        const rows = (res.values ?? []) as Report[];
         return rows[0] ?? null;
     },
 
