@@ -1,28 +1,44 @@
-import * as SQLite from "expo-sqlite";
+// TypeScript
+// `StealthDetect/src/db/dao/DeviceStateSnapshotDao.ts`
 
-// Model
+import { getDb } from '../db';
+
 export interface DeviceStateSnapshot {
-    snapshot_id: string;     // UUID
-    scan_id: string;         // FK
-    battery_level: number;   // 0-100
-    network_type: string;    // wifi | cellular | unknown
+    snapshot_id: string;
+    scan_id: string;
+    battery_level: number;
+    network_type: string;
     ip_address: string;
     created_at: string;
-    raw_json?: string;       // optional raw dump
+    raw_json?: string;
 }
 
-export type NewDeviceStateSnapshot = Omit<DeviceStateSnapshot, "created_at"> & { created_at?: string };
-
-const db = await SQLite.openDatabaseAsync("stealthdetect.db");
+export type NewDeviceStateSnapshot = Omit<
+    DeviceStateSnapshot,
+    'created_at'
+> & {
+    created_at?: string;
+};
 
 export const DeviceStateSnapshotDao = {
-    save: async (snap: DeviceStateSnapshot | NewDeviceStateSnapshot): Promise<void> => {
-        const { snapshot_id, scan_id, battery_level, network_type, ip_address, created_at, raw_json } = snap;
+    save: async (
+        snap: DeviceStateSnapshot | NewDeviceStateSnapshot
+    ): Promise<void> => {
+        const db = await getDb();
+        const {
+            snapshot_id,
+            scan_id,
+            battery_level,
+            network_type,
+            ip_address,
+            created_at,
+            raw_json,
+        } = snap;
 
-        await db.runAsync(
+        await db.run(
             `INSERT OR REPLACE INTO DeviceStateSnapshot
-            (snapshot_id, scan_id, battery_level, network_type, ip_address, created_at, raw_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?);`,
+               (snapshot_id, scan_id, battery_level, network_type, ip_address, created_at, raw_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?);`,
             [
                 snapshot_id,
                 scan_id,
@@ -30,20 +46,27 @@ export const DeviceStateSnapshotDao = {
                 network_type,
                 ip_address,
                 created_at ?? new Date().toISOString(),
-                raw_json ?? null
+                raw_json ?? null,
             ]
         );
     },
 
     getByScanId: async (scan_id: string): Promise<DeviceStateSnapshot[]> => {
-        const results = await db.getAllAsync<DeviceStateSnapshot>(
-            `SELECT * FROM DeviceStateSnapshot WHERE scan_id = ? ORDER BY created_at DESC;`,
+        const db = await getDb();
+        const res = await db.query<DeviceStateSnapshot>(
+            `SELECT * FROM DeviceStateSnapshot 
+       WHERE scan_id = ? 
+       ORDER BY created_at DESC;`,
             [scan_id]
         );
-        return results ?? [];
+        return res.values ?? [];
     },
 
     deleteByScanId: async (scan_id: string): Promise<void> => {
-        await db.runAsync(`DELETE FROM DeviceStateSnapshot WHERE scan_id = ?;`, [scan_id]);
-    }
+        const db = await getDb();
+        await db.run(
+            `DELETE FROM DeviceStateSnapshot WHERE scan_id = ?;`,
+            [scan_id]
+        );
+    },
 };

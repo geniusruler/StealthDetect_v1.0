@@ -1,47 +1,65 @@
-import * as SQLite from "expo-sqlite";
+// TypeScript
+// `StealthDetect/src/db/dao/ReportDao.ts`
 
-// TypeScript Model
+import { getDb } from '../db';
+
 export interface Report {
-    report_id: string;      // UUID
-    scan_id: string;        // FK to ScanSession
-    summary: string;        // JSON text
-    created_at: string;     // ISO timestamp
-    severity: string;       // "safe" | "suspicious" | "danger"
+    report_id: string;
+    scan_id: string;
+    summary: string;
+    created_at: string;
+    severity: string;
 }
 
-export type NewReport = Omit<Report, "created_at"> & { created_at?: string };
-
-// DB Connection
-const db = await SQLite.openDatabaseAsync("stealthdetect.db");
+export type NewReport = Omit<Report, 'created_at'> & {
+    created_at?: string;
+};
 
 export const ReportDao = {
     save: async (report: Report | NewReport): Promise<void> => {
+        const db = await getDb();
         const { report_id, scan_id, summary, created_at, severity } = report;
 
-        await db.runAsync(
-            `INSERT OR REPLACE INTO Report (report_id, scan_id, summary, created_at, severity)
-             VALUES (?, ?, ?, ?, ?);`,
-            [report_id, scan_id, summary, created_at ?? new Date().toISOString(), severity]
+        await db.run(
+            `INSERT OR REPLACE INTO Report 
+               (report_id, scan_id, summary, created_at, severity)
+               VALUES (?, ?, ?, ?, ?);`,
+            [
+                report_id,
+                scan_id,
+                summary,
+                created_at ?? new Date().toISOString(),
+                severity,
+            ]
         );
     },
 
     getByScanId: async (scan_id: string): Promise<Report[]> => {
-        const results = await db.getAllAsync<Report>(
-            `SELECT * FROM Report WHERE scan_id = ? ORDER BY created_at DESC;`,
+        const db = await getDb();
+        const res = await db.query<Report>(
+            `SELECT * FROM Report 
+       WHERE scan_id = ? 
+       ORDER BY created_at DESC;`,
             [scan_id]
         );
-        return results ?? [];
+        return res.values ?? [];
     },
 
     getById: async (report_id: string): Promise<Report | null> => {
-        const result = await db.getFirstAsync<Report>(
+        const db = await getDb();
+        const res = await db.query<Report>(
             `SELECT * FROM Report WHERE report_id = ?;`,
             [report_id]
         );
-        return result ?? null;
+        const rows = res.values ?? [];
+        return rows[0] ?? null;
     },
 
     deleteById: async (report_id: string): Promise<void> => {
-        await db.runAsync(`DELETE FROM Report WHERE report_id = ?;`, [report_id]);
-    }
+        const db = await getDb();
+        await db.run(
+            `DELETE FROM Report WHERE report_id = ?;`,
+            [report_id]
+        );
+    },
 };

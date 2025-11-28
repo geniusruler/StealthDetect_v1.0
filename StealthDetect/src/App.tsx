@@ -10,6 +10,9 @@ import { MainDashboard } from './components/MainDashboard';
 import { ScanInProgress } from './components/ScanInProgress';
 import { ScanReport } from './components/ScanReport';
 
+// Import: DB init function
+import { initDB } from './db/db';
+
 type Screen = 
   | 'start'
   | 'welcome'
@@ -23,36 +26,37 @@ type Screen =
   | 'scan-report';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('start');
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // User state
-  const [isFirstRun, setIsFirstRun] = useState(true);
-  const [isReturningUser, setIsReturningUser] = useState(false);
-  const [hasPermissions, setHasPermissions] = useState(false);
-  
-  // PIN state
-  const [mainPin, setMainPin] = useState('');
-  const [confirmMainPin, setConfirmMainPin] = useState('');
-  const [duressPin, setDuressPin] = useState('');
-  const [confirmDuressPin, setConfirmDuressPin] = useState('');
-  const [currentPin, setCurrentPin] = useState('');
-  
-  // Stored PINs
-  const [storedMainPin, setStoredMainPin] = useState('');
-  const [storedDuressPin, setStoredDuressPin] = useState('');
-  
-  // Permissions state
-  const [permissions, setPermissions] = useState({
+    const [currentScreen, setCurrentScreen] = useState<Screen>('start');
+    const [isLoading, setIsLoading] = useState(true);
+
+    // User state
+    const [isFirstRun, setIsFirstRun] = useState(true);
+    const [isReturningUser, setIsReturningUser] = useState(false);
+    const [hasPermissions, setHasPermissions] = useState(false);
+
+    // PIN state
+    const [mainPin, setMainPin] = useState('');
+    const [confirmMainPin, setConfirmMainPin] = useState('');
+    const [duressPin, setDuressPin] = useState('');
+    const [confirmDuressPin, setConfirmDuressPin] = useState('');
+    const [currentPin, setCurrentPin] = useState('');
+
+    // Stored PINs
+    const [storedMainPin, setStoredMainPin] = useState('');
+    const [storedDuressPin, setStoredDuressPin] = useState('');
+
+    // Permissions state
+    const [permissions, setPermissions] = useState({
     systemUsage: false,
     notifications: false,
-  });
-  
-  // Scan data
-  const [scanData, setScanData] = useState<any>(null);
+    });
 
-  // Initialize app state from localStorage
-  useEffect(() => {
+    // Scan data
+    const [scanData, setScanData] = useState<any>(null);
+
+    // Initialize app state from localStorage
+    // TODO: REPLACE WITH SQLITE DATABASE FUNCTIONALITY
+    useEffect(() => {
     try {
       const hasCompletedWelcome = localStorage.getItem('hasCompletedWelcome') === 'true';
       const hasSetupPins = localStorage.getItem('hasSetupPins') === 'true';
@@ -84,50 +88,63 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+    }, []);
 
-  // StartScreen handlers
-  const handleToggleFirstRun = () => {
+    // Init: Run DB init once on app startup
+    useEffect(() => {
+        const initDatabase = async () => {
+            try {
+                await initDB();
+                console.log('SQLite DB initialized');
+            } catch (e) {
+                console.error('SQLite DB init failed', e);
+            }
+        };
+        initDatabase().catch(e => console.error('SQLite DB init failed', e));
+    }, []);
+
+    // StartScreen handlers
+    const handleToggleFirstRun = () => {
     setIsFirstRun(!isFirstRun);
-  };
+    };
 
-  const handleNavigate = (step: string, cameFromWelcome?: boolean) => {
+    const handleNavigate = (step: string, cameFromWelcome?: boolean) => {
     if (cameFromWelcome !== undefined) {
       localStorage.setItem('cameFromWelcome', String(cameFromWelcome));
     }
     setCurrentScreen(step as Screen);
-  };
+    };
 
-  // WelcomeSlideshow handlers
-  const handleGetStarted = () => {
+    // WelcomeSlideshow handlers
+    const handleGetStarted = () => {
     try {
       localStorage.setItem('hasCompletedWelcome', 'true');
       setCurrentScreen('setup-pin');
     } catch (error) {
       console.error('Error saving welcome state:', error);
     }
-  };
+    };
 
-  const handleShowExplainer = () => {
+    const handleShowExplainer = () => {
     // Could show additional explainer screen
     handleGetStarted();
-  };
+    };
 
-  const handleQuickSetup = () => {
+    const handleQuickSetup = () => {
     try {
       localStorage.setItem('hasCompletedWelcome', 'true');
       setCurrentScreen('setup-pin');
     } catch (error) {
       console.error('Error saving welcome state:', error);
     }
-  };
+    };
 
-  // SetupPinsScreen handlers
-  const handlePinSetupComplete = () => {
+    // SetupPinsScreen handlers
+    const handlePinSetupComplete = () => {
     if (!validatePin(mainPin) || mainPin !== confirmMainPin) {
       return;
     }
-    
+
     if (duressPin && (duressPin === mainPin || duressPin !== confirmDuressPin)) {
       return;
     }
@@ -138,29 +155,29 @@ export default function App() {
       localStorage.setItem('hasSetupPins', 'true');
       setStoredMainPin(mainPin);
       setStoredDuressPin(duressPin);
-      
+
       // Clear setup fields
       setMainPin('');
       setConfirmMainPin('');
       setDuressPin('');
       setConfirmDuressPin('');
-      
+
       setCurrentScreen('permissions');
     } catch (error) {
       console.error('Error saving PIN data:', error);
     }
-  };
+    };
 
-  const validatePin = (pin: string): boolean => {
+    const validatePin = (pin: string): boolean => {
     return pin.length >= 4 && pin.length <= 8 && /^\d+$/.test(pin);
-  };
+    };
 
-  const handleBackFromSetup = () => {
+    const handleBackFromSetup = () => {
     setCurrentScreen('welcome');
-  };
+    };
 
-  // EnterPinScreen handlers
-  const handleUnlock = () => {
+    // EnterPinScreen handlers
+    const handleUnlock = () => {
     if (currentPin === storedMainPin) {
       setCurrentPin('');
       setCurrentScreen('home');
@@ -172,13 +189,13 @@ export default function App() {
       alert('Invalid PIN. Please try again.');
       setCurrentPin('');
     }
-  };
+    };
 
-  const handleBackFromEnter = () => {
+    const handleBackFromEnter = () => {
     setCurrentScreen('start');
-  };
+    };
 
-  const handleReset = () => {
+    const handleReset = () => {
     if (confirm('Are you sure you want to reset the app? All data will be cleared.')) {
       try {
         localStorage.clear();
@@ -187,21 +204,21 @@ export default function App() {
         console.error('Error resetting app:', error);
       }
     }
-  };
+    };
 
-  // PermissionsScreen handlers
-  const handlePermissionChange = (newPermissions: { systemUsage: boolean; notifications: boolean }) => {
+    // PermissionsScreen handlers
+    const handlePermissionChange = (newPermissions: { systemUsage: boolean; notifications: boolean }) => {
     setPermissions(newPermissions);
-  };
+    };
 
-  const handlePermissionsContinue = () => {
+    const handlePermissionsContinue = () => {
     try {
       localStorage.setItem('hasGrantedPermissions', 'true');
       setHasPermissions(true);
-      
+
       // Check if user has already set up PINs
       const hasSetupPins = localStorage.getItem('hasSetupPins') === 'true';
-      
+
       if (hasSetupPins) {
         // Returning user who just granted permissions
         setCurrentScreen('enter-pin');
@@ -212,19 +229,19 @@ export default function App() {
     } catch (error) {
       console.error('Error saving permissions state:', error);
     }
-  };
+    };
 
-  const handleBackFromPermissions = () => {
+    const handleBackFromPermissions = () => {
     const hasSetupPins = localStorage.getItem('hasSetupPins') === 'true';
     if (hasSetupPins) {
       setCurrentScreen('start');
     } else {
       setCurrentScreen('setup-pin');
     }
-  };
+    };
 
-  // HomeScreen handlers
-  const handleHomeNavigate = (screen: string) => {
+    // HomeScreen handlers
+    const handleHomeNavigate = (screen: string) => {
     if (screen === 'dashboard' || screen === 'main-dashboard' || screen === 'dashboard-pin') {
       setCurrentScreen('dashboard');
     } else if (screen === 'scan') {
@@ -238,24 +255,24 @@ export default function App() {
     } else {
       setCurrentScreen(screen as Screen);
     }
-  };
+    };
 
-  // Scan handlers
-  const handleScanComplete = (data: any) => {
+    // Scan handlers
+    const handleScanComplete = (data: any) => {
     setScanData(data);
     setCurrentScreen('scan-report');
-  };
+    };
 
-  const handleBackToDashboard = () => {
+    const handleBackToDashboard = () => {
     setCurrentScreen('dashboard');
-  };
+    };
 
-  const handleBackToHome = () => {
+    const handleBackToHome = () => {
     setCurrentScreen('home');
-  };
+    };
 
-  // Show loading state
-  if (isLoading) {
+    // Show loading state
+    if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-white text-center">
@@ -264,10 +281,10 @@ export default function App() {
         </div>
       </div>
     );
-  }
+    }
 
-  // Render current screen
-  return (
+    // Render current screen
+    return (
     <>
       {currentScreen === 'start' && (
         <StartScreen
@@ -325,7 +342,7 @@ export default function App() {
         <DecoyDashboard />
       )}
       {currentScreen === 'dashboard' && (
-        <MainDashboard 
+        <MainDashboard
           onNavigate={(screen) => {
             if (screen === 'scan-progress') {
               setCurrentScreen('scan-in-progress');
@@ -341,13 +358,13 @@ export default function App() {
         />
       )}
       {currentScreen === 'scan-in-progress' && (
-        <ScanInProgress 
+        <ScanInProgress
           onScanComplete={handleScanComplete}
           onBackToDashboard={handleBackToDashboard}
         />
       )}
       {currentScreen === 'scan-report' && (
-        <ScanReport 
+        <ScanReport
           onNavigate={(screen) => {
             if (screen === 'main-dashboard') {
               setCurrentScreen('dashboard');
@@ -358,5 +375,5 @@ export default function App() {
         />
       )}
     </>
-  );
+    );
 }
