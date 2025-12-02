@@ -5,6 +5,9 @@ StealthDetect is a stalkerware detection app for mobile devices that uses networ
 
 This is a code bundle for StealthDetect. The original project is available at: https://www.figma.com/design/yqrvXYv113geR5SfRexgl5/StealthDetect
 
+**You are never alone in this fight. You can always get help.**
+
+National Domestic Violence Hotline: 1-800-799-SAFE (7233)
 ## Prerequisites
 
 - Node.js (recent LTS, e.g. 20.x) with npm
