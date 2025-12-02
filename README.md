@@ -1,75 +1,126 @@
-   ![stealthdetectlogo](https://github.com/user-attachments/assets/cddd9c3c-e0d2-4ce0-8536-dcf0c4b94602)
+![stealthdetectlogo](https://github.com/user-attachments/assets/cddd9c3c-e0d2-4ce0-8536-dcf0c4b94602)
+
 # StealthDetect
 
-StealthDetect is a stalkerware detection app for mobile devices that uses network traffic to detect indicators of compromises. StealthDetect uses a VPN configuration profile to collect network traffic being transmitted from the device and makes it super easy for anyone to setup and scan their device for stalkerware or spyware.
-
-This is a code bundle for StealthDetect. The original project is available at: https://www.figma.com/design/yqrvXYv113geR5SfRexgl5/StealthDetect
+StealthDetect is a stalkerware detection app for mobile devices that uses network traffic analysis to detect indicators of compromise (IOCs). The app creates a local VPN to intercept DNS queries, comparing them against a bundled threat intelligence database to identify stalkerware, spyware, and other surveillance tools.
 
 **You are never alone in this fight. You can always get help.**
 
 National Domestic Violence Hotline: 1-800-799-SAFE (7233)
-## Prerequisites
 
-- Node.js (recent LTS, e.g. 20.x) with npm
-- Java JDK and Android Studio (for running the Android app)
+## Features
 
-## Running the web app (Vite + React)
+- **VPN-Based DNS Monitoring** - Creates a local VPN service to intercept and analyze DNS queries without sending data externally
+- **Offline Threat Detection** - Bundled IOC database with 100+ known stalkerware signatures works without internet
+- **Real-Time Alerts** - Instant notifications when suspicious network activity is detected
+- **Duress PIN Protection** - Secondary PIN shows a decoy dashboard to protect users in dangerous situations
+- **Comprehensive Scanning** - Detects malicious packages, C2 domains, and file hashes
+- **Privacy-First Design** - All analysis happens on-device; no data leaves your phone
 
-From the `StealthDetect/StealthDetect` folder (the one containing `package.json`):
+## Architecture
 
-1. Install dependencies:
-
-   ```cmd
-   npm install
-   ```
-
-2. Start the development server:
-
-   ```cmd
-   npm run dev
-   ```
-
-3. Open the URL shown in the terminal (typically `http://localhost:5173`) in your browser.
-
-## Building the web app
-
-From the same folder:
-
-```cmd
-npm run build
+```
+StealthDetect/
+├── src/                    # React + TypeScript frontend
+│   ├── components/         # UI screens and components
+│   ├── hooks/              # React hooks (useVpnMonitor)
+│   └── utils/              # Core utilities
+│       ├── database.ts     # SQLite database wrapper
+│       ├── ioc-auto-loader.ts    # Threat data loader
+│       ├── ioc-ingest.ts         # IOC ingestion service
+│       └── initialize-app.ts     # App initialization
+├── android/                # Capacitor Android project
+│   └── app/src/main/java/
+│       └── io/ionic/starter/
+│           ├── StealthDetectVpnService.java  # VPN service
+│           ├── DnsPacketParser.java          # DNS packet parser
+│           └── VpnServicePlugin.java         # Capacitor bridge
+└── public/
+    └── All_IOCs.json       # Bundled threat intelligence
 ```
 
-This produces a production build in the `build` directory. These files are what the Android (Capacitor) app loads.
+## Prerequisites
 
-## Running the Android app (Capacitor wrapper)
+- Node.js 20.x LTS or newer
+- npm 9.x or newer
+- Android Studio (Arctic Fox or newer)
+- Java JDK 17+
+- Android SDK with API level 24+ (Android 7.0)
 
-The Android app in the `android` folder is a Capacitor wrapper around the built web app.
+## Quick Start
 
-1. Build the web assets (if you haven't already or after making changes):
+### Web Development
 
-   ```cmd
-   cd \StealthDetect
-   npm install
-   npm run build
-   ```
+```bash
+cd StealthDetect_v1.0
+npm install
+npm run dev
+```
 
-2. Sync the web build to the Android project:
+Open `http://localhost:5173` in your browser.
 
-   ```cmd
-   npx cap sync android
-   ```
+### Android Build
 
-3. Open the Android project in Android Studio:
+```bash
+# Install dependencies and build
+npm install
+npm run build
 
-    - In Android Studio, choose **Open** and select the `\StealthDetect\android` directory.
-    - Let Gradle sync finish.
+# Sync to Android
+npx cap sync android
 
-4. Run on a device or emulator:
+# Open in Android Studio
+npx cap open android
+```
 
-    - Start an Android emulator or connect a device with USB debugging enabled.
-    - Click the **Run** (▶) button in Android Studio and choose your target device.
+In Android Studio:
+1. Wait for Gradle sync to complete
+2. Connect a device or start an emulator
+3. Click **Run** (▶)
 
-## Notes
+## How It Works
 
-- This project is a Vite + React web app wrapped by a Capacitor Android project; it is **not** an Expo / React Native app.
-- For native capabilities (e.g., SQLite, sensors), use Capacitor plugins rather than Expo packages.
+1. **App Initialization** - On first launch, the app loads the bundled IOC database into SQLite
+2. **VPN Activation** - User enables the local VPN service (requires Android permission)
+3. **DNS Interception** - The VPN intercepts all DNS queries from the device
+4. **Threat Matching** - Each query is compared against known malicious domains
+5. **Alert Generation** - Matches trigger real-time alerts and are logged for review
+
+## Threat Intelligence
+
+The app includes a bundled `All_IOCs.json` file containing:
+- Package signatures for known stalkerware apps
+- C2 (Command & Control) domain indicators
+- File hashes for malicious binaries
+- Network indicators from security research
+
+## Security Features
+
+| Feature | Description |
+|---------|-------------|
+| PIN Protection | 4-8 digit PIN required to access the app |
+| Duress Mode | Secondary PIN shows fake "clean" dashboard |
+| Local VPN | DNS analysis stays on-device |
+| Encrypted Storage | PINs stored using secure hashing |
+| No Telemetry | Zero data collection or external reporting |
+
+## Project Links
+
+- **Design**: [Figma Prototype](https://www.figma.com/design/yqrvXYv113geR5SfRexgl5/StealthDetect)
+- **Backend Specs**: See `/docs` folder for API documentation
+
+## Tech Stack
+
+- **Frontend**: React 18 + TypeScript + Tailwind CSS
+- **Build**: Vite 5.x
+- **Mobile**: Capacitor 6.x
+- **Database**: SQLite (via @capacitor-community/sqlite)
+- **Native**: Android VpnService API
+
+## License
+
+This project is developed for educational purposes as part of NYIT's Intro to Software Engineering course (CSCI 380).
+
+---
+
+*StealthDetect helps protect those at risk from digital surveillance. If you or someone you know is experiencing domestic violence or stalking, please reach out for help.*
