@@ -15,6 +15,7 @@ import { NetworkMapScreen } from './components/NetworkMapScreen';
 import { secureStorage, splashScreen, statusBar, isNative } from './utils/native';
 import { db } from './utils/database';
 import { hashPIN, verifyPIN } from './utils/crypto';
+import { initializeStealthDetect, displayInitBanner, type InitializationResult } from './utils/initialize-app';
 
 type Screen = 
   | 'start'
@@ -34,11 +35,15 @@ type Screen =
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('start');
   const [isLoading, setIsLoading] = useState(true);
-  
+  const [initProgress, setInitProgress] = useState<string>('Starting...');
+
   // User state
   const [isFirstRun, setIsFirstRun] = useState(true);
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [hasPermissions, setHasPermissions] = useState(false);
+
+  // App initialization state
+  const [appInitialized, setAppInitialized] = useState<InitializationResult | null>(null);
   
   // PIN state
   const [mainPin, setMainPin] = useState('');
@@ -66,15 +71,22 @@ export default function App() {
       try {
         // Hide splash screen when app is ready
         await splashScreen.hide();
-        
+
         // Set status bar style for iOS
         await statusBar.setStyle('dark');
 
-        // Load user state from secure storage
+        // Step 1: Initialize threat intelligence database (auto-loads IOCs)
+        setInitProgress('Loading threat intelligence...');
+        const initResult = await initializeStealthDetect();
+        setAppInitialized(initResult);
+        displayInitBanner(initResult);
+
+        // Step 2: Load user state from secure storage
+        setInitProgress('Loading user data...');
         const hasCompletedWelcome = await secureStorage.getItem('hasCompletedWelcome') === 'true';
         const hasSetupPins = await secureStorage.getItem('hasSetupPins') === 'true';
         const hasGrantedPermissions = await secureStorage.getItem('hasGrantedPermissions') === 'true';
-        
+
         // Load hashed PINs from database
         const storedMain = await db.getPINHash('main') || '';
         const storedDuress = await db.getPINHash('duress') || '';
@@ -300,7 +312,8 @@ export default function App() {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Loading Stealth Detect...</p>
+          <p className="text-lg font-medium mb-2">Stealth Detect</p>
+          <p className="text-sm text-gray-400">{initProgress}</p>
         </div>
       </div>
     );

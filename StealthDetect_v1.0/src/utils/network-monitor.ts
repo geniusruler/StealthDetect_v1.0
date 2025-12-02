@@ -1,13 +1,21 @@
 /**
  * VPN-based Network Monitoring System
  * Monitors network traffic for connections to known stalkerware infrastructure
- * 
- * NOTE: This is a conceptual implementation that demonstrates the approach.
- * Real VPN implementation requires native iOS/Android code via Capacitor plugins.
+ *
+ * Uses the VPN Service Plugin for DNS interception and Web Worker for IoC matching
  */
 
-import { checkNetworkAgainstCloud } from './ioc-sync';
+import { VpnService } from '../capacitor-plugins/vpn-service';
+import type {
+  DnsRequestEvent,
+  VpnStatus,
+  VpnStateChangeEvent,
+} from '../capacitor-plugins/vpn-service/definitions';
+import { iocWorkerManager, type ThreatInfo } from './ioc-worker-manager';
 import { db } from './database';
+import type { PluginListenerHandle } from '@capacitor/core';
+
+// ==================== Types ====================
 
 export interface NetworkConnection {
   timestamp: string;
@@ -36,74 +44,105 @@ export interface NetworkThreat {
   severity: 'low' | 'medium' | 'high' | 'critical';
   category: string;
   description: string;
-  connection?: NetworkConnection;
-  dnsQuery?: DnsQuery;
+  appName?: string;
+  sourceApp?: string;
+  dnsQuery?: DnsRequestEvent;
   source: string;
 }
 
 export interface NetworkMonitorState {
   isMonitoring: boolean;
+  vpnConnected: boolean;
   connectionsMonitored: number;
   dnsQueriesMonitored: number;
   threatsDetected: number;
   startTime: string | null;
+  workerInitialized: boolean;
 }
 
-/**
- * Network Monitor Class
- * Handles real-time network traffic analysis
- */
+// ==================== Network Monitor Class ====================
+
 class NetworkMonitor {
   private isMonitoring = false;
-  private connections: NetworkConnection[] = [];
-  private dnsQueries: DnsQuery[] = [];
+  private vpnConnected = false;
   private threats: NetworkThreat[] = [];
+  private dnsQueriesCount = 0;
+  private connectionsCount = 0;
   private monitoringStartTime: string | null = null;
 
-  // Simulated network monitoring interval
-  private monitorInterval: NodeJS.Timeout | null = null;
+  // Event listeners
+  private dnsListener: PluginListenerHandle | null = null;
+  private stateListener: PluginListenerHandle | null = null;
+
+  // Callbacks for external consumers
+  private onThreatDetected: ((threat: NetworkThreat) => void) | null = null;
+  private onDnsQuery: ((event: DnsRequestEvent) => void) | null = null;
 
   /**
-   * Start network monitoring
+   * Start network monitoring with VPN
    */
   async start(): Promise<void> {
     if (this.isMonitoring) {
-      console.warn('Network monitoring already active');
+      console.warn('[NetworkMonitor] Already monitoring');
       return;
     }
 
-    console.log('Starting network monitor...');
-    this.isMonitoring = true;
-    this.monitoringStartTime = new Date().toISOString();
-    this.connections = [];
-    this.dnsQueries = [];
+    console.log('[NetworkMonitor] Starting with VPN plugin...');
+
+    // Reset state
     this.threats = [];
+    this.dnsQueriesCount = 0;
+    this.connectionsCount = 0;
+    this.monitoringStartTime = new Date().toISOString();
 
-    // In a real implementation, this would:
-    // 1. Activate VPN service via Capacitor plugin
-    // 2. Set up packet capture
-    // 3. Monitor DNS queries
-    // 4. Analyze traffic in real-time
+    try {
+      // Start VPN service
+      const result = await VpnService.startVpn();
 
-    // For demonstration, we'll simulate network activity
-    this.simulateNetworkMonitoring();
+      if (!result.success) {
+        if (result.requiresPermission) {
+          throw new Error('VPN permission required - please grant permission and try again');
+        }
+        throw new Error(result.errorMessage || 'Failed to start VPN');
+      }
+
+      this.vpnConnected = true;
+      this.isMonitoring = true;
+
+      // Set up event listeners
+      await this.setupListeners();
+
+      console.log('[NetworkMonitor] Started successfully');
+    } catch (error) {
+      console.error('[NetworkMonitor] Failed to start:', error);
+      throw error;
+    }
   }
 
   /**
    * Stop network monitoring
    */
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.isMonitoring) {
       return;
     }
 
-    console.log('Stopping network monitor...');
+    console.log('[NetworkMonitor] Stopping...');
+
+    // Remove listeners
+    await this.removeListeners();
+
+    // Stop VPN
+    try {
+      await VpnService.stopVpn();
+    } catch (error) {
+      console.error('[NetworkMonitor] Error stopping VPN:', error);
+    }
+
+    this.vpnConnected = false;
     this.isMonitoring = false;
 
-    if (this.monitorInterval) {
-      clearInterval(this.monitorInterval);
-      this.monitorInterval = null;
-    }
+    console.log('[NetworkMonitor] Stopped');
   }
 
   /**
@@ -112,185 +151,166 @@ class NetworkMonitor {
   getState(): NetworkMonitorState {
     return {
       isMonitoring: this.isMonitoring,
-      connectionsMonitored: this.connections.length,
-      dnsQueriesMonitored: this.dnsQueries.length,
+      vpnConnected: this.vpnConnected,
+      connectionsMonitored: this.connectionsCount,
+      dnsQueriesMonitored: this.dnsQueriesCount,
       threatsDetected: this.threats.length,
       startTime: this.monitoringStartTime,
+      workerInitialized: iocWorkerManager.isInitialized(),
     };
   }
 
   /**
-   * Get detected threats
+   * Get all detected threats
    */
   getThreats(): NetworkThreat[] {
     return [...this.threats];
   }
 
   /**
-   * Get recent connections
+   * Get VPN status from plugin
    */
-  getConnections(limit = 50): NetworkConnection[] {
-    return this.connections.slice(-limit);
+  async getVpnStatus(): Promise<VpnStatus> {
+    return await VpnService.getVpnStatus();
   }
 
   /**
-   * Get recent DNS queries
+   * Check if VPN permission is granted
    */
-  getDnsQueries(limit = 50): DnsQuery[] {
-    return this.dnsQueries.slice(-limit);
+  async checkVpnPermission(): Promise<boolean> {
+    const result = await VpnService.checkPermission();
+    return result.granted;
   }
 
   /**
-   * Analyze network connection against IoC database
+   * Request VPN permission
    */
-  private async analyzeConnection(connection: NetworkConnection): Promise<void> {
-    // Check domain against local IoC database
-    const domainIoCs = await db.getNetworkIoCs();
-    const domainMatch = domainIoCs.find(ioc => 
-      ioc.type === 'domain' && connection.domain.includes(ioc.value)
-    );
+  async requestVpnPermission(): Promise<boolean> {
+    const result = await VpnService.requestPermission();
+    return result.granted;
+  }
 
-    if (domainMatch) {
-      const threat: NetworkThreat = {
-        id: `threat_${Date.now()}_${Math.random()}`,
-        timestamp: connection.timestamp,
-        type: 'domain',
-        indicator: domainMatch.value,
-        severity: domainMatch.severity,
-        category: domainMatch.category,
-        description: domainMatch.description || `Connection to known malicious domain: ${domainMatch.value}`,
-        connection,
-        source: domainMatch.source,
-      };
+  /**
+   * Set callback for when a threat is detected
+   */
+  setOnThreatDetected(callback: (threat: NetworkThreat) => void): void {
+    this.onThreatDetected = callback;
+  }
 
-      this.threats.push(threat);
-      console.warn('⚠️ Network threat detected:', threat);
+  /**
+   * Set callback for DNS query events
+   */
+  setOnDnsQuery(callback: (event: DnsRequestEvent) => void): void {
+    this.onDnsQuery = callback;
+  }
+
+  /**
+   * Clear callbacks
+   */
+  clearCallbacks(): void {
+    this.onThreatDetected = null;
+    this.onDnsQuery = null;
+  }
+
+  // ==================== Private Methods ====================
+
+  private async setupListeners(): Promise<void> {
+    // Listen for DNS request events
+    this.dnsListener = await VpnService.addListener('dnsRequest', (event) => {
+      this.handleDnsRequest(event);
+    });
+
+    // Listen for VPN state changes
+    this.stateListener = await VpnService.addListener('vpnStateChange', (event) => {
+      this.handleStateChange(event);
+    });
+  }
+
+  private async removeListeners(): Promise<void> {
+    if (this.dnsListener) {
+      await this.dnsListener.remove();
+      this.dnsListener = null;
     }
 
-    // Check IP against IoC database
-    const ipMatch = domainIoCs.find(ioc => 
-      ioc.type === 'ip' && connection.ip === ioc.value
-    );
-
-    if (ipMatch) {
-      const threat: NetworkThreat = {
-        id: `threat_${Date.now()}_${Math.random()}`,
-        timestamp: connection.timestamp,
-        type: 'ip',
-        indicator: ipMatch.value,
-        severity: ipMatch.severity,
-        category: ipMatch.category,
-        description: ipMatch.description || `Connection to known malicious IP: ${ipMatch.value}`,
-        connection,
-        source: ipMatch.source,
-      };
-
-      this.threats.push(threat);
-      console.warn('⚠️ Network threat detected:', threat);
-    }
-  }
-
-  /**
-   * Analyze DNS query against IoC database
-   */
-  private async analyzeDnsQuery(query: DnsQuery): Promise<void> {
-    const domainIoCs = await db.getNetworkIoCs();
-    const match = domainIoCs.find(ioc => 
-      ioc.type === 'domain' && query.domain.includes(ioc.value)
-    );
-
-    if (match) {
-      const threat: NetworkThreat = {
-        id: `threat_${Date.now()}_${Math.random()}`,
-        timestamp: query.timestamp,
-        type: 'dns_query',
-        indicator: match.value,
-        severity: match.severity,
-        category: match.category,
-        description: match.description || `DNS query to known malicious domain: ${match.value}`,
-        dnsQuery: query,
-        source: match.source,
-      };
-
-      this.threats.push(threat);
-      console.warn('⚠️ DNS threat detected:', threat);
+    if (this.stateListener) {
+      await this.stateListener.remove();
+      this.stateListener = null;
     }
   }
 
-  /**
-   * Simulate network monitoring (for demonstration)
-   * In production, this would be replaced with actual VPN packet capture
-   */
-  private simulateNetworkMonitoring(): void {
-    // Simulated stalkerware domains for demo
-    const stalkerwareDomains = [
-      'api.mspy.com',
-      'cp.mspyonline.com',
-      'api.flexispy.com',
-      'my.hoverwatch.com',
-      'api.thetruthspy.com',
-      'dashboard.spyic.com',
-    ];
+  private async handleDnsRequest(event: DnsRequestEvent): Promise<void> {
+    this.dnsQueriesCount++;
 
-    const normalDomains = [
-      'google.com',
-      'apple.com',
-      'facebook.com',
-      'twitter.com',
-      'amazon.com',
-      'cloudflare.com',
-    ];
+    // Notify external listener
+    if (this.onDnsQuery) {
+      this.onDnsQuery(event);
+    }
 
-    let connectionCount = 0;
+    // Check against IoC database using Web Worker
+    let threat: ThreatInfo | null = null;
 
-    this.monitorInterval = setInterval(async () => {
-      if (!this.isMonitoring) {
-        return;
+    if (iocWorkerManager.isInitialized()) {
+      threat = await iocWorkerManager.matchDnsQuery(event);
+    } else {
+      // Fallback to database query if worker not initialized
+      const match = await db.findNetworkIoC(event.domain);
+      if (match) {
+        threat = {
+          indicator: match.value,
+          indicatorType: match.type,
+          appName: 'Unknown',
+          category: match.category,
+          severity: match.severity,
+          description: match.description,
+          source: match.source,
+        };
       }
+    }
 
-      connectionCount++;
+    if (threat) {
+      const networkThreat = this.createNetworkThreat(event, threat);
+      this.threats.push(networkThreat);
 
-      // Randomly generate network activity
-      const isStalkerware = Math.random() < 0.15; // 15% chance of stalkerware connection
-      const domain = isStalkerware
-        ? stalkerwareDomains[Math.floor(Math.random() * stalkerwareDomains.length)]
-        : normalDomains[Math.floor(Math.random() * normalDomains.length)];
+      console.warn('[NetworkMonitor] Threat detected:', networkThreat);
 
-      // Simulate connection
-      const connection: NetworkConnection = {
-        timestamp: new Date().toISOString(),
-        domain,
-        ip: `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-        port: [80, 443, 8080][Math.floor(Math.random() * 3)],
-        protocol: ['HTTP', 'HTTPS'][Math.floor(Math.random() * 2)] as any,
-        bytesIn: Math.floor(Math.random() * 10000),
-        bytesOut: Math.floor(Math.random() * 5000),
-        appPackage: isStalkerware ? 'com.mspy.android' : 'com.android.chrome',
-      };
-
-      this.connections.push(connection);
-      await this.analyzeConnection(connection);
-
-      // Simulate DNS query
-      const dnsQuery: DnsQuery = {
-        timestamp: new Date().toISOString(),
-        domain,
-        queryType: 'A',
-        response: [connection.ip],
-        appPackage: connection.appPackage,
-      };
-
-      this.dnsQueries.push(dnsQuery);
-      await this.analyzeDnsQuery(dnsQuery);
-
-      // Keep only last 100 connections/queries to prevent memory issues
-      if (this.connections.length > 100) {
-        this.connections = this.connections.slice(-100);
+      // Notify external listener
+      if (this.onThreatDetected) {
+        this.onThreatDetected(networkThreat);
       }
-      if (this.dnsQueries.length > 100) {
-        this.dnsQueries = this.dnsQueries.slice(-100);
-      }
-    }, 2000); // Generate activity every 2 seconds
+    }
+  }
+
+  private handleStateChange(event: VpnStateChangeEvent): void {
+    console.log('[NetworkMonitor] VPN state changed:', event.state);
+
+    switch (event.state) {
+      case 'connected':
+        this.vpnConnected = true;
+        break;
+      case 'disconnected':
+        this.vpnConnected = false;
+        break;
+      case 'error':
+        console.error('[NetworkMonitor] VPN error:', event.errorMessage);
+        this.vpnConnected = false;
+        break;
+    }
+  }
+
+  private createNetworkThreat(event: DnsRequestEvent, threat: ThreatInfo): NetworkThreat {
+    return {
+      id: `threat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: event.timestamp,
+      type: 'dns_query',
+      indicator: event.domain,
+      severity: threat.severity,
+      category: threat.category,
+      description: threat.description,
+      appName: threat.appName,
+      sourceApp: event.sourceApp || undefined,
+      dnsQuery: event,
+      source: threat.source,
+    };
   }
 
   /**
@@ -303,96 +323,17 @@ class NetworkMonitor {
         end: new Date().toISOString(),
       },
       statistics: {
-        connections_monitored: this.connections.length,
-        dns_queries_monitored: this.dnsQueries.length,
+        dns_queries_monitored: this.dnsQueriesCount,
+        connections_monitored: this.connectionsCount,
         threats_detected: this.threats.length,
       },
       threats: this.threats,
-      recent_connections: this.connections.slice(-20),
-      recent_dns_queries: this.dnsQueries.slice(-20),
     };
 
     return JSON.stringify(report, null, 2);
   }
 }
 
-// Singleton instance
+// ==================== Export Singleton ====================
+
 export const networkMonitor = new NetworkMonitor();
-
-/**
- * Capacitor Plugin Interface (for future native implementation)
- * This defines the API that a native Capacitor plugin would implement
- */
-export interface VpnPlugin {
-  /**
-   * Start VPN service for traffic monitoring
-   */
-  startVpn(): Promise<{ success: boolean }>;
-
-  /**
-   * Stop VPN service
-   */
-  stopVpn(): Promise<{ success: boolean }>;
-
-  /**
-   * Get VPN connection status
-   */
-  getVpnStatus(): Promise<{ connected: boolean }>;
-
-  /**
-   * Register listener for network events
-   */
-  addListener(
-    eventName: 'connection' | 'dnsQuery',
-    listenerFunc: (data: NetworkConnection | DnsQuery) => void
-  ): Promise<void>;
-
-  /**
-   * Remove event listener
-   */
-  removeAllListeners(): Promise<void>;
-}
-
-/**
- * Native VPN Integration Guide (for iOS implementation)
- * 
- * To implement real VPN-based monitoring on iOS:
- * 
- * 1. Create Capacitor Plugin:
- *    npm init @capacitor/plugin
- *    Name: @stealth-detect/vpn-monitor
- * 
- * 2. iOS Implementation (Swift):
- *    - Use NEVPNManager for VPN configuration
- *    - Use NEPacketTunnelProvider for packet capture
- *    - Implement DNS proxy using NEDNSProxyProvider
- * 
- * 3. Required iOS Capabilities:
- *    - Network Extensions
- *    - Personal VPN
- * 
- * 4. Code Structure:
- *    ```swift
- *    import NetworkExtension
- *    
- *    class VpnMonitorPlugin: CAPPlugin {
- *        func startVpn() {
- *            let manager = NEVPNManager.shared()
- *            // Configure VPN
- *            // Start packet tunnel
- *        }
- *        
- *        func capturePacket(_ packet: Data) {
- *            // Parse packet
- *            // Extract domain/IP
- *            // Send to JS layer via notifyListeners
- *        }
- *    }
- *    ```
- * 
- * 5. Privacy Considerations:
- *    - All traffic stays on device
- *    - No data sent to cloud
- *    - User must explicitly enable VPN
- *    - Display VPN indicator in status bar
- */

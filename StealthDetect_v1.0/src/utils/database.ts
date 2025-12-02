@@ -1,10 +1,11 @@
 /**
  * StealthDetect Database
  * Stores Indicators of Compromise (IoCs), scan history, and PIN hashes
- * Uses localStorage in browser, will use encrypted storage in iOS build
+ * Uses SQLite on Android, localStorage fallback in browser
  */
 
-import { secureStorage } from './native';
+import { secureStorage, isNative } from './native';
+import { iocIngestService, type ThreatMatch } from './ioc-ingest';
 
 // ==================== Types ====================
 
@@ -94,9 +95,23 @@ const CURRENT_DB_VERSION = '1.0.0';
 
 class Database {
   private initialized = false;
+  private useSQLite = false;
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
+
+    // Use SQLite on native platforms (Android)
+    this.useSQLite = isNative();
+
+    if (this.useSQLite) {
+      try {
+        await iocIngestService.initialize();
+        console.log('[Database] SQLite initialized for native platform');
+      } catch (error) {
+        console.warn('[Database] SQLite init failed, falling back to localStorage:', error);
+        this.useSQLite = false;
+      }
+    }
 
     // Check database version and migrate if needed
     const version = await this.getDbVersion();
@@ -104,13 +119,22 @@ class Database {
       await this.migrate(version, CURRENT_DB_VERSION);
     }
 
-    // Initialize with default IoCs if empty
-    const fileHashes = await this.getFileHashes();
-    if (fileHashes.length === 0) {
-      await this.loadDefaultIoCs();
+    // Initialize with default IoCs if empty (only for localStorage mode)
+    if (!this.useSQLite) {
+      const fileHashes = await this.getFileHashes();
+      if (fileHashes.length === 0) {
+        await this.loadDefaultIoCs();
+      }
     }
 
     this.initialized = true;
+  }
+
+  /**
+   * Check if using SQLite backend
+   */
+  isSQLiteEnabled(): boolean {
+    return this.useSQLite;
   }
 
   private async getDbVersion(): Promise<string | null> {
@@ -147,8 +171,30 @@ class Database {
   }
 
   async findFileHash(hash: string): Promise<FileHashIoC | null> {
+    // Use SQLite if available (faster indexed lookup)
+    if (this.useSQLite) {
+      const match = await iocIngestService.findHashBySHA256(hash);
+      if (match) {
+        return this.threatMatchToFileHash(match);
+      }
+      return null;
+    }
+
+    // Fallback to localStorage
     const hashes = await this.getFileHashes();
     return hashes.find(h => h.hash === hash) || null;
+  }
+
+  private threatMatchToFileHash(match: ThreatMatch): FileHashIoC {
+    return {
+      hash: match.indicator,
+      algorithm: 'SHA-256',
+      category: match.category as FileHashIoC['category'],
+      severity: match.severity,
+      description: match.description,
+      source: match.source,
+      dateAdded: new Date().toISOString(),
+    };
   }
 
   // ==================== Network IoCs ====================
@@ -169,8 +215,30 @@ class Database {
   }
 
   async findNetworkIoC(value: string): Promise<NetworkIoC | null> {
+    // Use SQLite if available (faster indexed lookup with subdomain matching)
+    if (this.useSQLite) {
+      const match = await iocIngestService.findNetworkIndicator(value);
+      if (match) {
+        return this.threatMatchToNetworkIoC(match);
+      }
+      return null;
+    }
+
+    // Fallback to localStorage
     const iocs = await this.getNetworkIoCs();
     return iocs.find(ioc => ioc.value === value) || null;
+  }
+
+  private threatMatchToNetworkIoC(match: ThreatMatch): NetworkIoC {
+    return {
+      type: match.indicatorType.includes('ip') ? 'ip' : 'domain',
+      value: match.indicator,
+      category: match.category as NetworkIoC['category'],
+      severity: match.severity,
+      description: match.description,
+      source: match.source,
+      dateAdded: new Date().toISOString(),
+    };
   }
 
   // ==================== Package IoCs ====================
@@ -191,8 +259,44 @@ class Database {
   }
 
   async findPackageIoC(packageName: string): Promise<PackageIoC | null> {
+    // Use SQLite if available (faster indexed lookup)
+    if (this.useSQLite) {
+      const match = await iocIngestService.findPackageByName(packageName);
+      if (match) {
+        return this.threatMatchToPackageIoC(match);
+      }
+      return null;
+    }
+
+    // Fallback to localStorage
     const iocs = await this.getPackageIoCs();
     return iocs.find(ioc => ioc.packageName === packageName) || null;
+  }
+
+  /**
+   * Check multiple packages at once (batch query - only available with SQLite)
+   */
+  async findPackages(packageNames: string[]): Promise<PackageIoC[]> {
+    if (this.useSQLite) {
+      const matches = await iocIngestService.findPackages(packageNames);
+      return matches.map(m => this.threatMatchToPackageIoC(m));
+    }
+
+    // Fallback: check each package individually
+    const iocs = await this.getPackageIoCs();
+    return iocs.filter(ioc => packageNames.includes(ioc.packageName));
+  }
+
+  private threatMatchToPackageIoC(match: ThreatMatch): PackageIoC {
+    return {
+      packageName: match.indicator,
+      platform: 'android',
+      category: match.category as PackageIoC['category'],
+      severity: match.severity,
+      description: match.description,
+      source: match.source,
+      dateAdded: new Date().toISOString(),
+    };
   }
 
   // ==================== Scan History ====================
@@ -308,6 +412,18 @@ class Database {
     packageIoCs: number;
     lastUpdate: string | null;
   }> {
+    // Use SQLite stats if available
+    if (this.useSQLite) {
+      const stats = await iocIngestService.getStats();
+      return {
+        fileHashes: stats.hashes,
+        networkIoCs: stats.network,
+        packageIoCs: stats.packages,
+        lastUpdate: stats.lastSync,
+      };
+    }
+
+    // Fallback to localStorage
     const [fileHashes, networkIoCs, packageIoCs, lastUpdate] = await Promise.all([
       this.getFileHashes(),
       this.getNetworkIoCs(),
@@ -321,6 +437,13 @@ class Database {
       packageIoCs: packageIoCs.length,
       lastUpdate,
     };
+  }
+
+  /**
+   * Get the IoC ingest service for direct SQLite operations
+   */
+  getIngestService() {
+    return iocIngestService;
   }
 
   async updateLastUpdate(): Promise<void> {

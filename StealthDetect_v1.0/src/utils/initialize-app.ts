@@ -3,22 +3,25 @@
  * Run this once to set up the complete Stealth Detect system
  */
 
-import { initializeDatabase, getDatabaseStats, syncIoCs } from './ioc-sync';
+import { autoLoadIoCs, getIoCLoadStatus, type IoCLoadResult } from './ioc-auto-loader';
+import { db } from './database';
 
 export interface InitializationResult {
   success: boolean;
   steps: {
     databaseInitialized: boolean;
-    spyguardDataImported: boolean;
-    iocsSynced: boolean;
+    iocDataLoaded: boolean;
+    vpnServiceReady: boolean;
   };
   stats: {
-    stalkerwareCount: number;
+    packagesCount: number;
     networkIndicatorsCount: number;
+    hashesCount: number;
     totalThreats: number;
   };
   errors: string[];
   timestamp: string;
+  loadTime: number;
 }
 
 /**
@@ -26,116 +29,93 @@ export interface InitializationResult {
  * This should be called once when the app first loads
  */
 export async function initializeStealthDetect(): Promise<InitializationResult> {
-  console.log('🚀 Initializing Stealth Detect...');
-  
+  console.log('[Init] Initializing Stealth Detect...');
+  const startTime = Date.now();
+
   const result: InitializationResult = {
     success: false,
     steps: {
       databaseInitialized: false,
-      spyguardDataImported: false,
-      iocsSynced: false,
+      iocDataLoaded: false,
+      vpnServiceReady: false,
     },
     stats: {
-      stalkerwareCount: 0,
+      packagesCount: 0,
       networkIndicatorsCount: 0,
+      hashesCount: 0,
       totalThreats: 0,
     },
     errors: [],
     timestamp: new Date().toISOString(),
+    loadTime: 0,
   };
 
   try {
-    // Step 1: Check if database is already initialized
-    console.log('📊 Checking database status...');
-    let stats;
+    // Step 1: Initialize local database
+    console.log('[Init] Initializing local database...');
     try {
-      stats = await getDatabaseStats();
-      
-      if (stats.stats.counts.stalkerware_signatures > 0) {
-        console.log('✅ Database already initialized');
-        result.steps.databaseInitialized = true;
-        result.steps.spyguardDataImported = true;
-        result.stats.stalkerwareCount = stats.stats.counts.stalkerware_signatures;
-        result.stats.networkIndicatorsCount = stats.stats.counts.network_indicators;
-        result.stats.totalThreats = stats.stats.counts.total;
-      }
+      await db.initialize();
+      result.steps.databaseInitialized = true;
+      console.log('[Init] Database initialized');
     } catch (error) {
-      console.log('⚠️ Database not yet initialized');
+      console.error('[Init] Database initialization failed:', error);
+      result.errors.push(`Database init error: ${error}`);
     }
 
-    // Step 2: Initialize database if needed
-    if (!result.steps.databaseInitialized) {
-      console.log('🗄️ Initializing database with SpyGuard data...');
-      try {
-        const initResult = await initializeDatabase();
-        
-        if (initResult.success) {
-          result.steps.databaseInitialized = true;
-          result.steps.spyguardDataImported = true;
-          
-          console.log('✅ Database initialized successfully');
-          console.log(`   - Stalkerware signatures: ${initResult.import_results.stalkerware}`);
-          console.log(`   - Network indicators: ${initResult.import_results.network}`);
-          
-          result.stats.stalkerwareCount = initResult.import_results.stalkerware;
-          result.stats.networkIndicatorsCount = initResult.import_results.network;
+    // Step 2: Auto-load IOC data from bundled file
+    console.log('[Init] Loading threat intelligence data...');
+    try {
+      const loadResult: IoCLoadResult = await autoLoadIoCs();
+
+      if (loadResult.success) {
+        result.steps.iocDataLoaded = true;
+        result.stats.packagesCount = loadResult.stats.packages;
+        result.stats.networkIndicatorsCount = loadResult.stats.network;
+        result.stats.hashesCount = loadResult.stats.hashes;
+        result.stats.totalThreats = loadResult.stats.packages + loadResult.stats.network + loadResult.stats.hashes;
+
+        if (loadResult.isFirstLoad) {
+          console.log('[Init] IOC data loaded (first load):', result.stats);
         } else {
-          result.errors.push('Database initialization failed');
+          console.log('[Init] IOC data already present:', result.stats);
         }
-      } catch (error) {
-        console.error('❌ Database initialization failed:', error);
-        result.errors.push(`Database init error: ${error}`);
-      }
-    }
-
-    // Step 3: Sync IoCs to local storage
-    console.log('☁️ Syncing threat intelligence to local storage...');
-    try {
-      const syncResult = await syncIoCs();
-      
-      if (syncResult.success) {
-        result.steps.iocsSynced = true;
-        console.log('✅ IoCs synced successfully');
-        console.log(`   - Stalkerware: ${syncResult.stalkerwareCount}`);
-        console.log(`   - Network: ${syncResult.networkCount}`);
-        console.log(`   - Packages: ${syncResult.packageCount}`);
-        console.log(`   - File hashes: ${syncResult.fileHashCount}`);
       } else {
-        result.errors.push('IoC sync failed');
-        console.warn('⚠️ IoC sync completed with errors:', syncResult.errors);
+        result.errors.push('IOC data loading failed');
+        if (loadResult.errors.length > 0) {
+          result.errors.push(...loadResult.errors);
+        }
+        console.warn('[Init] IOC load completed with errors:', loadResult.errors);
       }
     } catch (error) {
-      console.error('❌ IoC sync failed:', error);
-      result.errors.push(`IoC sync error: ${error}`);
+      console.error('[Init] IOC loading failed:', error);
+      result.errors.push(`IOC load error: ${error}`);
     }
 
-    // Step 4: Get final stats
-    try {
-      const finalStats = await getDatabaseStats();
-      result.stats.stalkerwareCount = finalStats.stats.counts.stalkerware_signatures;
-      result.stats.networkIndicatorsCount = finalStats.stats.counts.network_indicators;
-      result.stats.totalThreats = finalStats.stats.counts.total;
-    } catch (error) {
-      console.warn('Could not fetch final stats:', error);
-    }
+    // Step 3: VPN service is ready (native plugin registered in MainActivity)
+    // The VPN doesn't need to be started automatically, just ready for use
+    result.steps.vpnServiceReady = true;
+    console.log('[Init] VPN service ready');
 
     // Determine overall success
-    result.success = result.steps.databaseInitialized && 
-                     result.steps.spyguardDataImported && 
+    result.success = result.steps.databaseInitialized &&
+                     result.steps.iocDataLoaded &&
                      result.errors.length === 0;
 
+    result.loadTime = Date.now() - startTime;
+
     if (result.success) {
-      console.log('🎉 Stealth Detect initialized successfully!');
-      console.log(`📊 Total threats in database: ${result.stats.totalThreats}`);
+      console.log(`[Init] Stealth Detect initialized successfully in ${result.loadTime}ms`);
+      console.log(`[Init] Threats loaded: ${result.stats.totalThreats}`);
     } else {
-      console.error('⚠️ Initialization completed with issues:', result.errors);
+      console.warn('[Init] Initialization completed with issues:', result.errors);
     }
 
     return result;
 
   } catch (error) {
-    console.error('❌ Fatal initialization error:', error);
+    console.error('[Init] Fatal initialization error:', error);
     result.errors.push(`Fatal error: ${error}`);
+    result.loadTime = Date.now() - startTime;
     return result;
   }
 }
@@ -143,9 +123,9 @@ export async function initializeStealthDetect(): Promise<InitializationResult> {
 /**
  * Check if the app has been initialized
  */
-export function isAppInitialized(): boolean {
-  const lastSync = localStorage.getItem('sync_stalkerware_signatures');
-  return lastSync !== null;
+export async function isAppInitialized(): Promise<boolean> {
+  const status = await getIoCLoadStatus();
+  return status.loaded;
 }
 
 /**
@@ -153,30 +133,19 @@ export function isAppInitialized(): boolean {
  */
 export async function getInitializationStatus(): Promise<{
   initialized: boolean;
-  lastSync: string | null;
+  lastLoadTime: string | null;
   threatCount: number;
+  stats: { packages: number; network: number; hashes: number } | null;
 }> {
-  const initialized = isAppInitialized();
-  const lastSyncData = localStorage.getItem('last_full_sync');
-  
-  let lastSync = null;
-  let threatCount = 0;
-
-  if (lastSyncData) {
-    try {
-      const parsed = JSON.parse(lastSyncData);
-      lastSync = parsed.timestamp;
-      threatCount = parsed.counts.stalkerware + parsed.counts.network + 
-                    parsed.counts.packages + parsed.counts.fileHashes;
-    } catch (error) {
-      console.error('Error parsing sync data:', error);
-    }
-  }
+  const status = await getIoCLoadStatus();
 
   return {
-    initialized,
-    lastSync,
-    threatCount,
+    initialized: status.loaded,
+    lastLoadTime: status.loadTime,
+    threatCount: status.stats
+      ? status.stats.packages + status.stats.network + status.stats.hashes
+      : 0,
+    stats: status.stats,
   };
 }
 
@@ -188,23 +157,24 @@ export function displayInitBanner(result: InitializationResult): void {
 ╔═══════════════════════════════════════════════════════════════════╗
 ║                     STEALTH DETECT INITIALIZED                    ║
 ╠═══════════════════════════════════════════════════════════════════╣
-║  Status: ${result.success ? '✅ SUCCESS' : '⚠️  PARTIAL'}                                             ║
+║  Status: ${result.success ? 'SUCCESS' : 'PARTIAL'}                                           ║
 ║                                                                   ║
-║  Database Initialized:    ${result.steps.databaseInitialized ? '✅' : '❌'}                                 ║
-║  SpyGuard Data Imported:  ${result.steps.spyguardDataImported ? '✅' : '❌'}                                 ║
-║  IoCs Synced Locally:     ${result.steps.iocsSynced ? '✅' : '❌'}                                 ║
+║  Database Initialized:    ${result.steps.databaseInitialized ? 'Yes' : 'No '}                               ║
+║  IOC Data Loaded:         ${result.steps.iocDataLoaded ? 'Yes' : 'No '}                               ║
+║  VPN Service Ready:       ${result.steps.vpnServiceReady ? 'Yes' : 'No '}                               ║
 ║                                                                   ║
 ║  Threat Intelligence:                                             ║
-║  ├─ Stalkerware Signatures:  ${String(result.stats.stalkerwareCount).padEnd(3)} apps                      ║
-║  ├─ Network Indicators:      ${String(result.stats.networkIndicatorsCount).padEnd(3)} C2 domains             ║
-║  └─ Total Threats:           ${String(result.stats.totalThreats).padEnd(3)} indicators               ║
+║  - Package Signatures:  ${String(result.stats.packagesCount).padStart(5)} apps                       ║
+║  - Network Indicators:  ${String(result.stats.networkIndicatorsCount).padStart(5)} domains                   ║
+║  - File Hashes:         ${String(result.stats.hashesCount).padStart(5)} hashes                    ║
+║  - Total Threats:       ${String(result.stats.totalThreats).padStart(5)} indicators                ║
 ║                                                                   ║
-║  Timestamp: ${result.timestamp.substring(0, 19)}                    ║
+║  Load Time: ${String(result.loadTime).padStart(5)}ms                                          ║
 ╚═══════════════════════════════════════════════════════════════════╝
   `);
 
   if (result.errors.length > 0) {
-    console.warn('⚠️ Errors during initialization:');
+    console.warn('Errors during initialization:');
     result.errors.forEach(err => console.warn(`   - ${err}`));
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -6,7 +6,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Shield, Play, RefreshCw, FileText, Pause, Globe, Map, Clock, Zap, Activity, ArrowLeft, ChevronRight, Settings, MoreHorizontal } from "lucide-react";
+import { Shield, Play, RefreshCw, FileText, Pause, Globe, Map, Clock, Zap, Activity, ArrowLeft, ChevronRight, Settings, MoreHorizontal, Wifi, WifiOff } from "lucide-react";
+import { useVpnMonitor } from "../hooks/useVpnMonitor";
 
 interface MainDashboardProps {
   onNavigate: (screen: "scan-progress" | "scan-report" | "network-map" | "home" | "settings") => void;
@@ -15,6 +16,19 @@ interface MainDashboardProps {
 export function MainDashboard({ onNavigate }: MainDashboardProps) {
   const [domain, setDomain] = useState("");
   const [isScanning, setIsScanning] = useState(false);
+
+  // Use VPN monitor hook for real-time data
+  const {
+    isConnected,
+    isConnecting,
+    stats,
+    recentDnsEvents,
+    threats,
+    startVpn,
+    stopVpn,
+    toggleVpn,
+    isUsingNative,
+  } = useVpnMonitor();
 
   const handleStartScan = () => {
     setIsScanning(true);
@@ -92,46 +106,50 @@ export function MainDashboard({ onNavigate }: MainDashboardProps) {
           <Card className="hover:shadow-sm transition-shadow duration-200">
             <CardContent className="p-3 md:p-4">
               <div className="flex items-center gap-2 md:gap-3">
-                <Shield className="w-4 h-4 md:w-5 md:h-5 text-destructive" />
+                <Shield className={`w-4 h-4 md:w-5 md:h-5 ${stats.threatsDetected > 0 ? 'text-destructive' : 'text-green-500'}`} />
                 <div>
                   <p className="text-xs md:text-sm text-muted-foreground">Threats Detected</p>
-                  <p className="text-sm md:text-lg font-medium">0 today</p>
+                  <p className="text-sm md:text-lg font-medium">{stats.threatsDetected} today</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="hover:shadow-sm transition-shadow duration-200">
             <CardContent className="p-3 md:p-4">
               <div className="flex items-center gap-2 md:gap-3">
-                <Zap className="w-4 h-4 md:w-5 md:h-5 text-green-500" />
+                {isConnected ? (
+                  <Wifi className="w-4 h-4 md:w-5 md:h-5 text-green-500" />
+                ) : (
+                  <WifiOff className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground" />
+                )}
                 <div>
-                  <p className="text-xs md:text-sm text-muted-foreground">Network Status</p>
-                  <p className="text-sm md:text-lg font-medium">Protected</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Network Monitor</p>
+                  <p className="text-sm md:text-lg font-medium">{isConnected ? 'Active' : 'Inactive'}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="hover:shadow-sm transition-shadow duration-200">
             <CardContent className="p-3 md:p-4">
               <div className="flex items-center gap-2 md:gap-3">
-                <Clock className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
+                <Activity className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
                 <div>
-                  <p className="text-xs md:text-sm text-muted-foreground">Last Scan</p>
-                  <p className="text-sm md:text-lg font-medium">10:04</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">DNS Queries</p>
+                  <p className="text-sm md:text-lg font-medium">{stats.dnsQueriesTotal}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="hover:shadow-sm transition-shadow duration-200">
             <CardContent className="p-3 md:p-4">
               <div className="flex items-center gap-2 md:gap-3">
-                <Activity className="w-4 h-4 md:w-5 md:h-5 text-primary" />
+                <Globe className="w-4 h-4 md:w-5 md:h-5 text-primary" />
                 <div>
-                  <p className="text-xs md:text-sm text-muted-foreground">Auto-Defense</p>
-                  <p className="text-sm md:text-lg font-medium">On</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Connections</p>
+                  <p className="text-sm md:text-lg font-medium">{stats.totalConnections}</p>
                 </div>
               </div>
             </CardContent>
@@ -171,10 +189,13 @@ export function MainDashboard({ onNavigate }: MainDashboardProps) {
           <Card className="lg:col-span-2 hover:shadow-sm transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                <Shield className="w-4 h-4 md:w-5 md:h-5 text-green-500" />
-                Live Protection
-                <Badge variant="secondary" className="ml-auto bg-green-100 text-green-700">
-                  Active
+                <Shield className={`w-4 h-4 md:w-5 md:h-5 ${isConnected ? 'text-green-500' : 'text-muted-foreground'}`} />
+                Network Monitor
+                <Badge
+                  variant="secondary"
+                  className={`ml-auto ${isConnected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}
+                >
+                  {isConnecting ? 'Starting...' : isConnected ? 'Active' : 'Inactive'}
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -182,25 +203,41 @@ export function MainDashboard({ onNavigate }: MainDashboardProps) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                    <span className="text-sm">Firewall protection</span>
+                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                    <span className="text-sm">DNS Interception</span>
                   </div>
-                  <Badge variant="outline" className="text-xs">Online</Badge>
+                  <Badge variant="outline" className="text-xs">{isConnected ? 'Running' : 'Stopped'}</Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                    <span className="text-sm">Real-time DNS filter</span>
+                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                    <span className="text-sm">Threat Detection</span>
                   </div>
-                  <Badge variant="outline" className="text-xs">Active</Badge>
+                  <Badge variant="outline" className="text-xs">{isConnected ? 'Active' : 'Stopped'}</Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                    <span className="text-sm">Background monitor</span>
+                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                    <span className="text-sm">Mode: {isUsingNative ? 'Native VPN' : 'Web Simulation'}</span>
                   </div>
-                  <Badge variant="outline" className="text-xs">Running</Badge>
+                  <Badge variant="outline" className="text-xs">{isUsingNative ? 'Android' : 'Browser'}</Badge>
                 </div>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <Button
+                  onClick={toggleVpn}
+                  disabled={isConnecting}
+                  variant={isConnected ? "outline" : "default"}
+                  className="w-full"
+                >
+                  {isConnecting ? (
+                    <>Starting...</>
+                  ) : isConnected ? (
+                    <><Pause className="w-4 h-4 mr-2" />Stop Monitoring</>
+                  ) : (
+                    <><Play className="w-4 h-4 mr-2" />Start Monitoring</>
+                  )}
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -281,34 +318,65 @@ export function MainDashboard({ onNavigate }: MainDashboardProps) {
         <Card className="mb-6 md:mb-8 hover:shadow-sm transition-shadow duration-200">
           <CardHeader>
             <CardTitle className="text-base md:text-lg flex items-center justify-between">
-              Recent Activity
-              <Badge variant="outline" className="text-xs">Live</Badge>
+              Recent DNS Activity
+              <Badge variant="outline" className={`text-xs ${isConnected ? 'animate-pulse' : ''}`}>
+                {isConnected ? 'Live' : 'Paused'}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between py-2 border-b border-border/50 hover:bg-accent/30 rounded px-2 -mx-2 transition-colors duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span className="text-sm">Policy rules refreshed</span>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {recentDnsEvents.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Globe className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No DNS activity yet</p>
+                  <p className="text-xs">{isConnected ? 'Waiting for network traffic...' : 'Start monitoring to see activity'}</p>
                 </div>
-                <span className="text-xs text-muted-foreground">2 min ago</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border/50 hover:bg-accent/30 rounded px-2 -mx-2 transition-colors duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <span className="text-sm">Background monitor started</span>
-                </div>
-                <span className="text-xs text-muted-foreground">12 min ago</span>
-              </div>
-              <div className="flex items-center justify-between py-2 hover:bg-accent/30 rounded px-2 -mx-2 transition-colors duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                  <span className="text-sm">Baseline scan completed</span>
-                </div>
-                <span className="text-xs text-muted-foreground">Today, 10:04</span>
-              </div>
+              ) : (
+                recentDnsEvents.slice(0, 10).map((event, index) => (
+                  <div
+                    key={event.id}
+                    className={`flex items-center justify-between py-2 px-2 -mx-2 rounded transition-colors duration-200 ${
+                      event.isThreat ? 'bg-red-50 dark:bg-red-950/30' : 'hover:bg-accent/30'
+                    } ${index < recentDnsEvents.length - 1 ? 'border-b border-border/50' : ''}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        event.isThreat ? 'bg-red-500' : 'bg-green-500'
+                      }`}></div>
+                      <div className="min-w-0 flex-1">
+                        <span className={`text-sm truncate block ${event.isThreat ? 'text-red-600 font-medium' : ''}`}>
+                          {event.domain}
+                        </span>
+                        {event.isThreat && event.threatInfo && (
+                          <span className="text-xs text-red-500">
+                            {event.threatInfo.category} - {event.threatInfo.severity}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Badge variant="outline" className="text-xs">{event.queryType}</Badge>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(event.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
+            {threats.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-red-600 font-medium">
+                    {threats.length} threat(s) detected
+                  </span>
+                  <Button variant="link" size="sm" className="text-red-600 h-auto p-0">
+                    View Details
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
