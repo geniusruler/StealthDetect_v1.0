@@ -48,7 +48,7 @@ The Android app in the `android` folder is a Capacitor wrapper around the built 
 1. Build the web assets (if you haven't already or after making changes):
 
    ```cmd
-   cd C:\Users\AK\Documents\Code\IdeaProjects\StealthDetect\StealthDetect
+   cd \StealthDetect
    npm install
    npm run build
    ```
@@ -61,7 +61,7 @@ The Android app in the `android` folder is a Capacitor wrapper around the built 
 
 3. Open the Android project in Android Studio:
 
-    - In Android Studio, choose **Open** and select the `C:\Users\AK\Documents\Code\IdeaProjects\StealthDetect\StealthDetect\android` directory.
+    - In Android Studio, choose **Open** and select the `\StealthDetect\android` directory.
     - Let Gradle sync finish.
 
 4. Run on a device or emulator:
