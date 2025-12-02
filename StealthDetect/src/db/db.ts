@@ -8,6 +8,7 @@ import {
     SQLiteDBConnection,
 } from '@capacitor-community/sqlite';
 import { createAllTables } from './schema';
+import { seedAllTables } from './defaultData';
 
 // Singleton instances
 let sqlite: SQLiteConnection | null = null;
@@ -57,6 +58,7 @@ export const initDB = async (): Promise<void> => {
     const conn = await getDb();
 
     try {
+        // Create tables if they don't exist
         if (Array.isArray(createAllTables)) {
             console.log('[DB] Running table creation statements (array)');
             for (const stmt of createAllTables) {
@@ -78,6 +80,25 @@ export const initDB = async (): Promise<void> => {
             }
         } else {
             console.warn('[DB] createAllTables is empty or invalid');
+        }
+        
+        // Prepopulate tables with default data
+        if (seedAllTables && typeof seedAllTables === 'string') {
+            console.log('[DB] Running seed statements');
+            const seedStatements = seedAllTables
+                .split(';')
+                .map(s => s.trim())
+                .filter(s => s.length);
+
+            for (const stmt of seedStatements) {
+                console.log('[DB] Executing seed:', stmt);
+                try {
+                    await conn.run(stmt);
+                } catch (seedErr) {
+                    // don't abort on a single seed failure; log and continue
+                    console.warn('[DB] Seed statement failed (continuing):', seedErr);
+                }
+            }
         }
 
         console.log('[DB] initDB finished successfully');
