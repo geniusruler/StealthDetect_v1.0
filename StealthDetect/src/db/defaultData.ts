@@ -8,7 +8,7 @@ VALUES ('user_1', 'en', 'normal', datetime('now'));
 
 -- Auth credentials
 INSERT OR IGNORE INTO AuthCredential (credential_id, main_pin_hash, duress_pin_hash, last_auth_at)
-VALUES ('cred_1', 'hash_main_sample', 'hash_duress_sample', datetime('now'));
+VALUES ('cred_1', '4321', '1234', datetime('now'));
 
 -- Scan sessions
 INSERT OR IGNORE INTO ScanSession (scan_id, user_id, started_at, ended_at, mode, status, app_version)
