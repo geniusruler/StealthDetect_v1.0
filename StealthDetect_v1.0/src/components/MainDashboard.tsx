@@ -12,6 +12,7 @@ import { useVpnMonitor } from "../hooks/useVpnMonitor";
 export interface ScanConfig {
   networkMonitoringDuration: number;
   skipNetworkMonitoring: boolean;
+  demoMode: boolean;
 }
 
 interface MainDashboardProps {
@@ -24,6 +25,7 @@ export function MainDashboard({ onNavigate, onStartScan }: MainDashboardProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [showScanConfig, setShowScanConfig] = useState(false);
   const [scanDuration, setScanDuration] = useState(10000); // Default 10 seconds
+  const [demoMode, setDemoMode] = useState(false); // Demo mode for simulating threats
 
   // Use VPN monitor hook for real-time data
   const {
@@ -48,6 +50,7 @@ export function MainDashboard({ onNavigate, onStartScan }: MainDashboardProps) {
     const config: ScanConfig = {
       networkMonitoringDuration: scanDuration,
       skipNetworkMonitoring: false,
+      demoMode: demoMode,
     };
     onStartScan?.(config);
     setTimeout(() => {
@@ -459,6 +462,28 @@ export function MainDashboard({ onNavigate, onStartScan }: MainDashboardProps) {
               <p className="text-xs text-muted-foreground">
                 Longer monitoring captures more network activity for better threat detection.
               </p>
+            </div>
+            <div className="grid gap-3 pt-2 border-t">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="demo-mode" className="text-sm font-medium">Demo Mode</Label>
+                  <p className="text-xs text-muted-foreground">Simulate threat detection for demonstrations</p>
+                </div>
+                <Button
+                  id="demo-mode"
+                  variant={demoMode ? "destructive" : "outline"}
+                  size="sm"
+                  onClick={() => setDemoMode(!demoMode)}
+                  className="min-w-[80px]"
+                >
+                  {demoMode ? "ON" : "OFF"}
+                </Button>
+              </div>
+              {demoMode && (
+                <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                  Demo mode will inject simulated stalkerware and network threats into the scan results.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
