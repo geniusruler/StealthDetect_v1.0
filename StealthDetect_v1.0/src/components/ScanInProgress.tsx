@@ -54,6 +54,7 @@ export function ScanInProgress({ onNavigate, onScanComplete, scanConfig }: ScanI
         const scanOptions: ScanOptions = {
           networkMonitoringDuration: scanConfig?.networkMonitoringDuration ?? 10000,
           skipNetworkMonitoring: scanConfig?.skipNetworkMonitoring ?? false,
+          demoMode: scanConfig?.demoMode ?? false,
         };
 
         const result = await systemScanner.startScan((progress) => {
