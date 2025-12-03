@@ -119,7 +119,7 @@ The IOCs are distributed under the Creative Common BY-NC-SA licence. This imply 
 
 ---
 
-*StealthDetect helps protect those at risk from digital surveillance. If you or someone you know is experiencing domestic violence or stalking, please reach out for help.* 
+*StealthDetect helps protect those at risk from tech enabled abuse. If you or someone you know is experiencing domestic violence or stalking, please reach out for help.* 
 
 **You are never alone in this fight. You can always get help.**
 
