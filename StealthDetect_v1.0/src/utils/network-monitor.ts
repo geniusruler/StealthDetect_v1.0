@@ -96,10 +96,17 @@ class NetworkMonitor {
     this.monitoringStartTime = new Date().toISOString();
 
     try {
+      // Set up event listeners BEFORE starting VPN to catch all events
+      console.log('[NetworkMonitor] Setting up listeners first...');
+      await this.setupListeners();
+
       // Start VPN service
+      console.log('[NetworkMonitor] Starting VPN service...');
       const result = await VpnService.startVpn();
 
       if (!result.success) {
+        // Clean up listeners if VPN failed to start
+        await this.removeListeners();
         if (result.requiresPermission) {
           throw new Error('VPN permission required - please grant permission and try again');
         }
@@ -108,9 +115,6 @@ class NetworkMonitor {
 
       this.vpnConnected = true;
       this.isMonitoring = true;
-
-      // Set up event listeners
-      await this.setupListeners();
 
       console.log('[NetworkMonitor] Started successfully');
     } catch (error) {
@@ -240,6 +244,7 @@ class NetworkMonitor {
 
   private async handleDnsRequest(event: DnsRequestEvent): Promise<void> {
     this.dnsQueriesCount++;
+    console.log('[NetworkMonitor] DNS Request received:', event.domain);
 
     // Notify external listener
     if (this.onDnsQuery) {
@@ -250,9 +255,11 @@ class NetworkMonitor {
     let threat: ThreatInfo | null = null;
 
     if (iocWorkerManager.isInitialized()) {
+      console.log('[NetworkMonitor] Checking with worker for:', event.domain);
       threat = await iocWorkerManager.matchDnsQuery(event);
     } else {
       // Fallback to database query if worker not initialized
+      console.log('[NetworkMonitor] Worker not ready, using DB for:', event.domain);
       const match = await db.findNetworkIoC(event.domain);
       if (match) {
         threat = {
@@ -271,12 +278,14 @@ class NetworkMonitor {
       const networkThreat = this.createNetworkThreat(event, threat);
       this.threats.push(networkThreat);
 
-      console.warn('[NetworkMonitor] Threat detected:', networkThreat);
+      console.warn('[NetworkMonitor] 🚨 THREAT DETECTED:', event.domain, threat);
 
       // Notify external listener
       if (this.onThreatDetected) {
         this.onThreatDetected(networkThreat);
       }
+    } else {
+      console.log('[NetworkMonitor] Domain safe:', event.domain);
     }
   }
 

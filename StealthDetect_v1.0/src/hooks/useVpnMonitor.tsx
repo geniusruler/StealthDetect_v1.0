@@ -12,7 +12,7 @@ import type {
   VpnStateChangeEvent,
   ConnectionEvent,
 } from '../capacitor-plugins/vpn-service/definitions';
-import { db } from '../utils/database';
+import { iocIngestService } from '../utils/ioc-ingest';
 import { isKnownMaliciousDomainWeb } from '../utils/ioc-auto-loader';
 import { isNative } from '../utils/native';
 
@@ -91,12 +91,14 @@ export function useVpnMonitor() {
   const checkDomainThreat = useCallback(
     async (domain: string): Promise<DnsEvent['threatInfo'] | null> => {
       try {
-        // On native, use SQLite database
+        // On native, use iocIngestService directly (bypasses db.useSQLite flag issues)
         if (isNative()) {
-          const match = await db.findNetworkIoC(domain);
+          console.log('[VpnMonitor] Checking domain in SQLite:', domain);
+          const match = await iocIngestService.findNetworkIndicator(domain);
+          console.log('[VpnMonitor] SQLite match result:', match);
           if (match) {
             return {
-              appName: 'Unknown',
+              appName: match.appName || 'Unknown',
               category: match.category,
               severity: match.severity,
               description: match.description,
@@ -127,10 +129,12 @@ export function useVpnMonitor() {
    */
   const handleDnsRequest = useCallback(
     async (event: DnsRequestEvent) => {
+      console.log('[VpnMonitor] 📥 DNS event received:', event.domain);
       const id = `dns_${++eventIdCounter.current}_${Date.now()}`;
 
       // Check if domain is a known threat
       const threatInfo = await checkDomainThreat(event.domain);
+      console.log('[VpnMonitor] Threat check result:', event.domain, threatInfo ? '🚨 THREAT' : '✅ Safe');
       const isThreat = threatInfo !== null;
 
       const dnsEvent: DnsEvent = {
