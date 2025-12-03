@@ -4,18 +4,14 @@
 
 StealthDetect is a stalkerware detection app for mobile devices that uses network traffic analysis to detect indicators of compromise (IOCs). The app creates a local VPN to intercept DNS queries, comparing them against a bundled threat intelligence database to identify stalkerware, spyware, and other surveillance tools.
 
-**You are never alone in this fight. You can always get help.**
-
-National Domestic Violence Hotline: 1-800-799-SAFE (7233)
-
 ## Features
 
-- **VPN-Based DNS Monitoring** - Creates a local VPN service to intercept and analyze DNS queries without sending data externally
-- **Offline Threat Detection** - Bundled IOC database with 100+ known stalkerware signatures works without internet
-- **Real-Time Alerts** - Instant notifications when suspicious network activity is detected
-- **Duress PIN Protection** - Secondary PIN shows a decoy dashboard to protect users in dangerous situations
+- **VPN Based DNS Monitoring** - Creates a local VPN service to intercept and analyze DNS queries without sending data externally
+- **Offline Threat Detection** - Bundled IOC database with known stalkerware signatures works without internet
+- **Real Time Alerts** - Instant notifications when suspicious network activity is detected
+- **Duress PIN Protection** - Secondary PIN shows a decoy dashboard to protect users in an attacker you know situations
 - **Comprehensive Scanning** - Detects malicious packages, C2 domains, and file hashes
-- **Privacy-First Design** - All analysis happens on-device; no data leaves your phone
+- **Privacy First Design** - All analysis happens on-device. No data leaves your phone
 
 ## Architecture
 
@@ -119,8 +115,12 @@ The app includes a bundled `All_IOCs.json` file containing:
 
 ## License
 
-This project is developed for educational purposes as part of NYIT's Intro to Software Engineering course (CSCI 380).
+The IOCs are distributed under the Creative Common BY-NC-SA licence. This imply a non commercial use of them. Please respect this licence and ask ECHAP for any question related to that.
 
 ---
 
-*StealthDetect helps protect those at risk from digital surveillance. If you or someone you know is experiencing domestic violence or stalking, please reach out for help.*
+*StealthDetect helps protect those at risk from digital surveillance. If you or someone you know is experiencing domestic violence or stalking, please reach out for help.* 
+
+**You are never alone in this fight. You can always get help.**
+
+National Domestic Violence Hotline: 1-800-799-SAFE (7233)
