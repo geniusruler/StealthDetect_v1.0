@@ -69,6 +69,7 @@ export default function App() {
   const [scanConfig, setScanConfig] = useState<ScanConfig>({
     networkMonitoringDuration: 10000,
     skipNetworkMonitoring: false,
+    demoMode: false,
   });
 
   // Initialize app state from secure storage
