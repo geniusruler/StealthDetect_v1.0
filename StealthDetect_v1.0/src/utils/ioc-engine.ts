@@ -115,10 +115,14 @@ export class IoCEngine {
       );
 
       // Check subdomain match (e.g., evil.com matches sub.evil.com)
+      // Use proper subdomain check: domain must end with ".ioc" or equal "ioc"
       if (!match) {
-        match = knownNetworkIoCs.find(ioc => 
-          domain.endsWith(ioc.value) || ioc.value.endsWith(domain)
-        );
+        match = knownNetworkIoCs.find(ioc => {
+          if (!ioc.value || !domain) return false;
+          // Exact match already checked above
+          // Check if domain is a subdomain of the IoC (e.g., "sub.evil.com" matches IoC "evil.com")
+          return domain.endsWith('.' + ioc.value);
+        });
       }
 
       if (match) {
@@ -155,10 +159,10 @@ export class IoCEngine {
     const knownPackages = await db.getPackageIoCs();
 
     for (const pkg of packages) {
-      const match = knownPackages.find(ioc => 
-        ioc.packageName === pkg.packageName ||
-        pkg.packageName.includes(ioc.packageName) ||
-        ioc.packageName.includes(pkg.packageName)
+      // Use exact package name matching only to prevent false positives
+      // e.g., "com.spy" should NOT match "com.spyguard.app"
+      const match = knownPackages.find(ioc =>
+        ioc.packageName === pkg.packageName
       );
 
       if (match) {
