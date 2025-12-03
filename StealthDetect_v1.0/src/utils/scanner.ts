@@ -53,6 +53,8 @@ export interface ScanOptions {
   skipNetworkMonitoring?: boolean;
   /** Skip cloud IoC sync */
   skipCloudSync?: boolean;
+  /** Demo mode - injects simulated threats for demonstration */
+  demoMode?: boolean;
 }
 
 /** Default scan options */
@@ -60,7 +62,68 @@ const DEFAULT_SCAN_OPTIONS: Required<ScanOptions> = {
   networkMonitoringDuration: 3000,
   skipNetworkMonitoring: false,
   skipCloudSync: false,
+  demoMode: false,
 };
+
+/** Demo threat data for demonstration purposes */
+const DEMO_THREATS: ThreatDetection[] = [
+  {
+    id: 'demo_stalkerware_1',
+    type: 'package',
+    severity: 'critical',
+    category: 'stalkerware',
+    name: 'Stalkerware Detected: com.mspy.android',
+    description: 'mSpy - Commercial surveillance software that can monitor calls, messages, location, and social media activity without user knowledge.',
+    matchedIoC: 'com.mspy.android',
+    evidence: {
+      appName: 'System Service',
+      packageName: 'com.mspy.android',
+      platform: 'android',
+      permissions: ['READ_SMS', 'RECEIVE_SMS', 'READ_CALL_LOG', 'RECORD_AUDIO', 'ACCESS_FINE_LOCATION', 'CAMERA'],
+      source: 'SpyGuard Demo',
+      recommendedAction: 'URGENT: Uninstall immediately. This is confirmed stalkerware.',
+    },
+    detectedAt: new Date().toISOString(),
+    resolved: false,
+  },
+  {
+    id: 'demo_network_1',
+    type: 'network',
+    severity: 'high',
+    category: 'c2',
+    name: 'Suspicious Network Connection: api.mspy.com',
+    description: 'Connection detected to known stalkerware command & control server used for exfiltrating private data.',
+    matchedIoC: 'api.mspy.com',
+    evidence: {
+      url: 'https://api.mspy.com',
+      domain: 'api.mspy.com',
+      type: 'domain',
+      connection: { destinationIp: '185.199.108.153', port: 443 },
+      source: 'VPN Monitor Demo',
+    },
+    detectedAt: new Date().toISOString(),
+    resolved: false,
+  },
+  {
+    id: 'demo_stalkerware_2',
+    type: 'package',
+    severity: 'critical',
+    category: 'stalkerware',
+    name: 'Stalkerware Detected: com.flexispy',
+    description: 'FlexiSpy - Advanced spyware capable of intercepting calls, reading encrypted messages, and remotely activating microphone.',
+    matchedIoC: 'com.flexispy',
+    evidence: {
+      appName: 'Sync Services',
+      packageName: 'com.flexispy',
+      platform: 'android',
+      permissions: ['READ_SMS', 'RECORD_AUDIO', 'PROCESS_OUTGOING_CALLS', 'READ_CONTACTS', 'ACCESS_FINE_LOCATION'],
+      source: 'SpyGuard Demo',
+      recommendedAction: 'URGENT: Uninstall immediately. This is confirmed stalkerware.',
+    },
+    detectedAt: new Date().toISOString(),
+    resolved: false,
+  },
+];
 
 // ==================== System Scanner ====================
 
@@ -184,9 +247,9 @@ export class SystemScanner {
             description: netThreat.description,
             indicator: netThreat.indicator,
             metadata: {
-              connection: netThreat.connection,
-              dnsQuery: netThreat.dnsQuery,
-              source: netThreat.source,
+              connection: netThreat.connection ?? null,
+              dnsQuery: netThreat.dnsQuery ?? null,
+              source: netThreat.source ?? 'unknown',
             },
             detectedAt: netThreat.timestamp,
           });
@@ -239,7 +302,7 @@ export class SystemScanner {
       
       // Check packages against SpyGuard database
       const detectedStalkerware = await spyGuardDetector.scanInstalledApps(
-        installedPackages.map(p => p.packageName)
+        installedPackages
       );
       
       progress.stats.stalkerwareDetected = detectedStalkerware.length;
@@ -269,12 +332,30 @@ export class SystemScanner {
       });
       
       threats.push(...iocResults.threats);
+
+      // Demo mode: Inject simulated threats for demonstration
+      if (scanOptions.demoMode) {
+        progress = this.addLogEntry(progress, '🎬 DEMO MODE: Injecting simulated threats...');
+        progressCallback?.(progress);
+
+        // Add demo threats with fresh timestamps
+        const demoThreatsWithTimestamp = DEMO_THREATS.map(t => ({
+          ...t,
+          detectedAt: new Date().toISOString(),
+        }));
+        threats.push(...demoThreatsWithTimestamp);
+
+        // Update stats for demo threats
+        progress.stats.stalkerwareDetected += 2;
+        progress.stats.networkThreats += 1;
+      }
+
       progress.stats.threatsFound = threats.length;
-      
+
       if (threats.length > 0) {
         const critical = threats.filter(t => t.severity === 'critical').length;
         const high = threats.filter(t => t.severity === 'high').length;
-        
+
         if (critical > 0) {
           progress = this.addLogEntry(progress, `🚨 ${critical} CRITICAL threats detected`);
         }
