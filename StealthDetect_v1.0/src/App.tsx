@@ -6,7 +6,7 @@ import { EnterPinScreen } from './components/EnterPinScreen';
 import { PermissionsScreen } from './components/PermissionsScreen';
 import { HomeScreen } from './components/HomeScreen';
 import { DecoyDashboard } from './components/DecoyDashboard';
-import { MainDashboard } from './components/MainDashboard';
+import { MainDashboard, type ScanConfig } from './components/MainDashboard';
 import { ScanInProgress } from './components/ScanInProgress';
 import { ScanReport } from './components/ScanReport';
 import { SettingsScreen } from './components/SettingsScreen';
@@ -64,6 +64,12 @@ export default function App() {
   
   // Scan data
   const [scanData, setScanData] = useState<any>(null);
+
+  // Scan configuration
+  const [scanConfig, setScanConfig] = useState<ScanConfig>({
+    networkMonitoringDuration: 10000,
+    skipNetworkMonitoring: false,
+  });
 
   // Initialize app state from secure storage
   useEffect(() => {
@@ -378,7 +384,7 @@ export default function App() {
         <DecoyDashboard onNavigate={handleHomeNavigate} />
       )}
       {currentScreen === 'dashboard' && (
-        <MainDashboard 
+        <MainDashboard
           onNavigate={(screen) => {
             if (screen === 'scan-progress') {
               setCurrentScreen('scan-in-progress');
@@ -392,10 +398,13 @@ export default function App() {
               setCurrentScreen('settings');
             }
           }}
+          onStartScan={(config) => {
+            setScanConfig(config);
+          }}
         />
       )}
       {currentScreen === 'scan-in-progress' && (
-        <ScanInProgress 
+        <ScanInProgress
           onNavigate={(screen) => {
             if (screen === 'main-dashboard') {
               setCurrentScreen('dashboard');
@@ -408,6 +417,7 @@ export default function App() {
           onScanComplete={(scanId) => {
             console.log('Scan completed:', scanId);
           }}
+          scanConfig={scanConfig}
         />
       )}
       {currentScreen === 'scan-report' && (

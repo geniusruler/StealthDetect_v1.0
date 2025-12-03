@@ -9,13 +9,21 @@ import { Label } from "./ui/label";
 import { Shield, Play, RefreshCw, FileText, Pause, Globe, Map, Clock, Zap, Activity, ArrowLeft, ChevronRight, Settings, MoreHorizontal, Wifi, WifiOff } from "lucide-react";
 import { useVpnMonitor } from "../hooks/useVpnMonitor";
 
-interface MainDashboardProps {
-  onNavigate: (screen: "scan-progress" | "scan-report" | "network-map" | "home" | "settings") => void;
+export interface ScanConfig {
+  networkMonitoringDuration: number;
+  skipNetworkMonitoring: boolean;
 }
 
-export function MainDashboard({ onNavigate }: MainDashboardProps) {
+interface MainDashboardProps {
+  onNavigate: (screen: "scan-progress" | "scan-report" | "network-map" | "home" | "settings") => void;
+  onStartScan?: (config: ScanConfig) => void;
+}
+
+export function MainDashboard({ onNavigate, onStartScan }: MainDashboardProps) {
   const [domain, setDomain] = useState("");
   const [isScanning, setIsScanning] = useState(false);
+  const [showScanConfig, setShowScanConfig] = useState(false);
+  const [scanDuration, setScanDuration] = useState(10000); // Default 10 seconds
 
   // Use VPN monitor hook for real-time data
   const {
@@ -31,8 +39,17 @@ export function MainDashboard({ onNavigate }: MainDashboardProps) {
   } = useVpnMonitor();
 
   const handleStartScan = () => {
+    setShowScanConfig(true);
+  };
+
+  const handleConfirmScan = () => {
+    setShowScanConfig(false);
     setIsScanning(true);
-    // Simulate scan start delay
+    const config: ScanConfig = {
+      networkMonitoringDuration: scanDuration,
+      skipNetworkMonitoring: false,
+    };
+    onStartScan?.(config);
     setTimeout(() => {
       onNavigate("scan-progress");
     }, 500);
@@ -394,6 +411,67 @@ export function MainDashboard({ onNavigate }: MainDashboardProps) {
           </p>
         </div>
       </div>
+
+      {/* Scan Configuration Dialog */}
+      <Dialog open={showScanConfig} onOpenChange={setShowScanConfig}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Scan Configuration
+            </DialogTitle>
+            <DialogDescription>
+              Select how long to monitor network traffic during the scan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-3">
+              <Label>Network Monitoring Duration</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  variant={scanDuration === 3000 ? "default" : "outline"}
+                  onClick={() => setScanDuration(3000)}
+                  className="flex flex-col h-auto py-3"
+                >
+                  <Zap className="w-4 h-4 mb-1" />
+                  <span className="text-sm font-medium">Quick</span>
+                  <span className="text-xs opacity-70">3 sec</span>
+                </Button>
+                <Button
+                  variant={scanDuration === 10000 ? "default" : "outline"}
+                  onClick={() => setScanDuration(10000)}
+                  className="flex flex-col h-auto py-3"
+                >
+                  <Shield className="w-4 h-4 mb-1" />
+                  <span className="text-sm font-medium">Standard</span>
+                  <span className="text-xs opacity-70">10 sec</span>
+                </Button>
+                <Button
+                  variant={scanDuration === 30000 ? "default" : "outline"}
+                  onClick={() => setScanDuration(30000)}
+                  className="flex flex-col h-auto py-3"
+                >
+                  <Activity className="w-4 h-4 mb-1" />
+                  <span className="text-sm font-medium">Thorough</span>
+                  <span className="text-xs opacity-70">30 sec</span>
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Longer monitoring captures more network activity for better threat detection.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowScanConfig(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmScan}>
+              <Play className="w-4 h-4 mr-2" />
+              Start Scan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -5,15 +5,17 @@ import { Progress } from "./ui/progress";
 import { ScrollArea } from "./ui/scroll-area";
 import { Badge } from "./ui/badge";
 import { Radar, Pause, Square, Minimize2, CheckCircle, Circle, Clock, AlertTriangle, Wifi, Cloud } from "lucide-react";
-import { systemScanner, type ScanProgress } from "../utils/scanner";
+import { systemScanner, type ScanProgress, type ScanOptions } from "../utils/scanner";
+import type { ScanConfig } from "./MainDashboard";
 import { db } from "../utils/database";
 
 interface ScanInProgressProps {
   onNavigate: (screen: "main-dashboard" | "scan-report" | "home") => void;
   onScanComplete?: (scanId: string) => void;
+  scanConfig?: ScanConfig;
 }
 
-export function ScanInProgress({ onNavigate, onScanComplete }: ScanInProgressProps) {
+export function ScanInProgress({ onNavigate, onScanComplete, scanConfig }: ScanInProgressProps) {
   const [scanProgress, setScanProgress] = useState<ScanProgress>({
     phase: 'initializing',
     progress: 0,
@@ -48,11 +50,17 @@ export function ScanInProgress({ onNavigate, onScanComplete }: ScanInProgressPro
 
     const runScan = async () => {
       try {
+        // Convert ScanConfig to ScanOptions
+        const scanOptions: ScanOptions = {
+          networkMonitoringDuration: scanConfig?.networkMonitoringDuration ?? 10000,
+          skipNetworkMonitoring: scanConfig?.skipNetworkMonitoring ?? false,
+        };
+
         const result = await systemScanner.startScan((progress) => {
           if (mounted) {
             setScanProgress(progress);
           }
-        });
+        }, scanOptions);
 
         // Scan completed
         if (mounted) {
@@ -77,7 +85,7 @@ export function ScanInProgress({ onNavigate, onScanComplete }: ScanInProgressPro
     return () => {
       mounted = false;
     };
-  }, [onNavigate, onScanComplete]);
+  }, [onNavigate, onScanComplete, scanConfig]);
 
   const handleStopAndView = () => {
     systemScanner.stopScan();

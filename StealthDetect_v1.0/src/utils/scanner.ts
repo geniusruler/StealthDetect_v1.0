@@ -43,6 +43,25 @@ export type ScanPhase =
 
 export type ScanProgressCallback = (progress: ScanProgress) => void;
 
+/**
+ * Scan options for configuring scan behavior
+ */
+export interface ScanOptions {
+  /** Network monitoring duration in milliseconds (default: 3000) */
+  networkMonitoringDuration?: number;
+  /** Skip network monitoring phase */
+  skipNetworkMonitoring?: boolean;
+  /** Skip cloud IoC sync */
+  skipCloudSync?: boolean;
+}
+
+/** Default scan options */
+const DEFAULT_SCAN_OPTIONS: Required<ScanOptions> = {
+  networkMonitoringDuration: 3000,
+  skipNetworkMonitoring: false,
+  skipCloudSync: false,
+};
+
 // ==================== System Scanner ====================
 
 export class SystemScanner {
@@ -52,13 +71,22 @@ export class SystemScanner {
 
   /**
    * Start a comprehensive system scan
+   * @param progressCallback - Callback for progress updates
+   * @param options - Scan configuration options
    */
   async startScan(
-    progressCallback?: ScanProgressCallback
+    progressCallback?: ScanProgressCallback,
+    options?: ScanOptions
   ): Promise<ScanResult> {
     if (this.isScanning) {
       throw new Error('Scan already in progress');
     }
+
+    // Merge options with defaults
+    const scanOptions: Required<ScanOptions> = {
+      ...DEFAULT_SCAN_OPTIONS,
+      ...options,
+    };
 
     this.isScanning = true;
     this.shouldStop = false;
@@ -122,16 +150,24 @@ export class SystemScanner {
       if (this.shouldStop) return this.generateInterruptedReport(startTime, threats, progress.stats);
 
       // Phase 3: Start Network Monitoring
-      progress = this.updateProgress(progress, 'monitoring_network', 30, 'Starting real-time network monitoring...');
-      progress = this.addLogEntry(progress, '🔍 Activating VPN-based network monitor...');
-      progress.networkMonitoring = true;
-      progressCallback?.(progress);
-      
-      // Start network monitor
-      await networkMonitor.start();
-      await this.delay(3000); // Monitor for 3 seconds to collect traffic
-      
-      const networkThreats = networkMonitor.getThreats();
+      if (!scanOptions.skipNetworkMonitoring) {
+        const monitorDuration = scanOptions.networkMonitoringDuration;
+        const durationSecs = Math.round(monitorDuration / 1000);
+
+        progress = this.updateProgress(progress, 'monitoring_network', 30, `Starting real-time network monitoring (${durationSecs}s)...`);
+        progress = this.addLogEntry(progress, `🔍 Activating VPN-based network monitor for ${durationSecs} seconds...`);
+        progress.networkMonitoring = true;
+        progressCallback?.(progress);
+
+        // Start network monitor
+        await networkMonitor.start();
+        await this.delay(monitorDuration); // Monitor for configured duration
+      } else {
+        progress = this.addLogEntry(progress, '⏭️ Skipping network monitoring (disabled in options)');
+        progressCallback?.(progress);
+      }
+
+      const networkThreats = scanOptions.skipNetworkMonitoring ? [] : networkMonitor.getThreats();
       progress.stats.networkThreats = networkThreats.length;
       progress = this.addLogEntry(progress, `✓ Network monitoring active (${networkMonitor.getState().connectionsMonitored} connections)`);
       
@@ -321,141 +357,76 @@ export class SystemScanner {
 
   /**
    * Scan system files and generate hashes
+   * Note: On Android, file system access is limited without root.
+   * Real file hash scanning requires special permissions or root access.
    */
   private async scanFiles(
     progress: ScanProgress,
     callback?: ScanProgressCallback
   ): Promise<Array<{ hash: string; fileName: string; size: number }>> {
-    const files: Array<{ hash: string; fileName: string; size: number }> = [];
-    
-    // Simulate file scanning
-    const mockFiles = [
-      'system.dll',
-      'config.dat',
-      'update.exe',
-      'service.sys',
-      'network.bin',
-      'user.data',
-      'cache.tmp',
-      'log.txt',
-      'settings.json',
-      'backup.zip',
-    ];
+    // On Android, we cannot scan arbitrary system files without root access.
+    // The primary detection methods are:
+    // 1. Package scanning (installed apps) - works without root
+    // 2. Network monitoring (DNS/traffic) - works via VPN
+    // File hash scanning is not feasible on standard Android devices.
 
-    for (let i = 0; i < mockFiles.length; i++) {
-      if (this.shouldStop) break;
+    progress = this.addLogEntry(progress, '⚠ File hash scanning limited on Android (no root)');
+    progress = this.addLogEntry(progress, '✓ Using package and network detection instead');
+    callback?.(progress);
 
-      const fileName = mockFiles[i];
-      const hash = await generateMockFileHash(fileName);
-      const size = Math.floor(Math.random() * 1000000) + 1024;
+    await this.delay(500);
 
-      files.push({ hash, fileName, size });
-
-      progress = this.addLogEntry(progress, `Scanning: ${fileName}`);
-      progress.progress = 15 + (i / mockFiles.length) * 20;
-      callback?.(progress);
-      
-      await this.delay(200);
-    }
-
-    return files;
+    // Return empty - no mock data
+    return [];
   }
 
   /**
    * Scan network connections
+   * Uses data collected by the VPN-based network monitor.
+   * Historical network data is not accessible on Android without root.
    */
   private async scanNetwork(
     progress: ScanProgress,
     callback?: ScanProgressCallback
   ): Promise<Array<{ url: string; type: 'domain' | 'ip' }>> {
-    const connections: Array<{ url: string; type: 'domain' | 'ip' }> = [];
-    
-    // Simulate network scanning
-    const mockConnections = [
-      { url: 'api.example.com', type: 'domain' as const },
-      { url: 'cdn.service.net', type: 'domain' as const },
-      { url: '192.168.1.1', type: 'ip' as const },
-      { url: 'tracker.ads.com', type: 'domain' as const },
-      { url: 'analytics.service.io', type: 'domain' as const },
-      { url: '10.0.0.1', type: 'ip' as const },
-      { url: 'update.microsoft.com', type: 'domain' as const },
-    ];
+    // On Android, we cannot access historical network connections without root.
+    // Real-time network monitoring is handled by the VPN service.
+    // The threats detected during monitoring are already captured in the
+    // networkMonitor.getThreats() call earlier in the scan.
 
-    for (let i = 0; i < mockConnections.length; i++) {
-      if (this.shouldStop) break;
+    progress = this.addLogEntry(progress, '📡 Network analysis via VPN monitor');
+    progress = this.addLogEntry(progress, '✓ Real-time DNS interception active');
+    callback?.(progress);
 
-      const conn = mockConnections[i];
-      connections.push(conn);
+    await this.delay(500);
 
-      progress = this.addLogEntry(progress, `Checking connection: ${conn.url}`);
-      progress.progress = 35 + (i / mockConnections.length) * 20;
-      callback?.(progress);
-      
-      await this.delay(300);
-    }
-
-    return connections;
+    // Return empty - network threats are captured via VPN monitoring
+    // which is handled separately in the scan flow
+    return [];
   }
 
   /**
    * Scan installed packages (SpyGuard detection)
+   * This is a fallback method when native AppScanner is unavailable.
+   * Returns empty array - no mock data.
    */
   private async scanPackages(
     progress: ScanProgress,
     callback?: ScanProgressCallback
   ): Promise<Array<{ packageName: string; version?: string; permissions?: string[] }>> {
-    const packages: Array<{ packageName: string; version?: string; permissions?: string[] }> = [];
-    
-    // Simulate package scanning with some suspicious apps
-    const mockPackages = [
-      { 
-        packageName: 'com.google.android.gms', 
-        version: '21.45.15',
-        permissions: ['INTERNET', 'ACCESS_FINE_LOCATION']
-      },
-      { 
-        packageName: 'com.android.chrome', 
-        version: '120.0.0',
-        permissions: ['INTERNET', 'CAMERA']
-      },
-      { 
-        packageName: 'com.system.service', 
-        version: '1.0.0',
-        permissions: ['READ_SMS', 'RECEIVE_SMS', 'READ_CALL_LOG', 'RECORD_AUDIO'] // Suspicious!
-      },
-      { 
-        packageName: 'com.messenger.app', 
-        version: '2.3.1',
-        permissions: ['INTERNET', 'READ_CONTACTS']
-      },
-      { 
-        packageName: 'com.mspy.android', // Known stalkerware!
-        version: '3.1.0',
-        permissions: ['READ_SMS', 'READ_CALL_LOG', 'ACCESS_FINE_LOCATION', 'RECORD_AUDIO']
-      },
-    ];
+    // This fallback is called when native AppScanner fails.
+    // Without native access, we cannot list installed packages.
+    // Return empty array instead of fake/mock data.
 
-    for (let i = 0; i < mockPackages.length; i++) {
-      if (this.shouldStop) break;
+    progress = this.addLogEntry(progress, '⚠ Native app scanner unavailable');
+    progress = this.addLogEntry(progress, '⚠ Package scanning requires native plugin');
+    progress = this.addLogEntry(progress, '✓ Network monitoring still active for detection');
+    callback?.(progress);
 
-      const pkg = mockPackages[i];
-      packages.push(pkg);
+    await this.delay(500);
 
-      progress = this.addLogEntry(progress, `Analyzing package: ${pkg.packageName}`);
-      progress.progress = 55 + (i / mockPackages.length) * 20;
-      callback?.(progress);
-      
-      await this.delay(250);
-    }
-
-    // Run SpyGuard detection
-    const stalkerware = await spyGuardDetector.scanInstalledApps(packages);
-    if (stalkerware.length > 0) {
-      progress = this.addLogEntry(progress, `⚠ Detected ${stalkerware.length} potential stalkerware apps`);
-      callback?.(progress);
-    }
-
-    return packages;
+    // Return empty - no mock data
+    return [];
   }
 
   // ==================== Helper Methods ====================
