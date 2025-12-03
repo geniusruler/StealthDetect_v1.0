@@ -63,12 +63,13 @@ export const SPYGUARD_STALKERWARE_DB = {
     'com.findmyfriends',
   ],
 
-  // Hidden/Disguised Apps
+  // Hidden/Disguised Apps (fake system apps used by stalkerware)
+  // NOTE: Do NOT include real Android system packages here
   hidden: [
-    'com.android.systemui', // Fake system UI
-    'com.system.service',
-    'com.android.update',
-    'com.google.service',
+    'com.system.service.fake',      // Fake system service
+    'com.android.update.malware',   // Fake update (not real android update)
+    'com.google.service.spyware',   // Fake Google service
+    'com.android.systemservice',    // Note: different from real systemui
   ],
 };
 
@@ -106,6 +107,51 @@ export const SUSPICIOUS_APP_NAMES = [
   'System Manager',
   'Process Manager',
   'Task Manager',
+];
+
+/**
+ * Legitimate Android system packages that should NEVER be flagged as stalkerware
+ * Even if they have suspicious permissions, these are real system apps
+ */
+export const ANDROID_SYSTEM_PACKAGES = [
+  'com.android.systemui',
+  'com.android.settings',
+  'com.android.phone',
+  'com.android.contacts',
+  'com.android.mms',
+  'com.android.providers.contacts',
+  'com.android.providers.telephony',
+  'com.android.providers.media',
+  'com.android.providers.downloads',
+  'com.android.documentsui',
+  'com.android.launcher',
+  'com.android.launcher3',
+  'com.android.inputmethod',
+  'com.android.camera',
+  'com.android.camera2',
+  'com.android.gallery3d',
+  'com.android.bluetooth',
+  'com.android.nfc',
+  'com.android.shell',
+  'com.android.packageinstaller',
+  'com.android.vending',           // Google Play Store
+  'com.google.android.gms',        // Google Play Services
+  'com.google.android.gsf',        // Google Services Framework
+  'com.google.android.apps.maps',
+  'com.google.android.apps.photos',
+  'com.google.android.apps.messaging',
+  'com.google.android.dialer',
+  'com.google.android.contacts',
+  'com.google.android.calendar',
+  'com.google.android.deskclock',
+  'com.google.android.googlequicksearchbox',
+  'com.samsung.android',           // Samsung system apps prefix
+  'com.sec.android',               // Samsung system apps prefix
+  'com.huawei.android',            // Huawei system apps prefix
+  'com.xiaomi.android',            // Xiaomi system apps prefix
+  'com.oppo.android',              // Oppo system apps prefix
+  'com.vivo.android',              // Vivo system apps prefix
+  'com.oneplus.android',           // OnePlus system apps prefix
 ];
 
 // ==================== Stalkerware Detection Engine ====================
@@ -146,6 +192,32 @@ export class SpyGuardDetector {
   }
 
   /**
+   * Check if package is a legitimate Android system app
+   */
+  private isSystemPackage(packageName: string): boolean {
+    // Check exact matches
+    if (ANDROID_SYSTEM_PACKAGES.includes(packageName)) {
+      return true;
+    }
+
+    // Check prefix matches for manufacturer system apps
+    const systemPrefixes = [
+      'com.android.',
+      'com.google.android.',
+      'com.samsung.',
+      'com.sec.',
+      'com.huawei.',
+      'com.xiaomi.',
+      'com.oppo.',
+      'com.vivo.',
+      'com.oneplus.',
+      'android.',
+    ];
+
+    return systemPrefixes.some(prefix => packageName.startsWith(prefix));
+  }
+
+  /**
    * Analyze a single app for stalkerware indicators
    */
   private async analyzeApp(app: {
@@ -154,6 +226,11 @@ export class SpyGuardDetector {
     version?: string;
     permissions?: string[];
   }): Promise<DetectedStalkerware | null> {
+    // Skip legitimate Android system packages - they're not stalkerware!
+    if (this.isSystemPackage(app.packageName)) {
+      return null;
+    }
+
     const detectionReasons: string[] = [];
     let severity: 'critical' | 'high' | 'medium' | 'low' = 'low';
 
