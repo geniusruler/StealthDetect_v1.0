@@ -164,7 +164,7 @@ export interface DetectedStalkerware {
   severity: 'critical' | 'high' | 'medium' | 'low';
   permissions: string[];
   signature: StalkerwareSignature | null;
-  recommended Action: string;
+  recommendedAction: string;
 }
 
 export class SpyGuardDetector {
