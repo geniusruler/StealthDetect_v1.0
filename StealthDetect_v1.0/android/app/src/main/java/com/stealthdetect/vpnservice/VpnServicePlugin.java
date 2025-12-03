@@ -9,7 +9,9 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import androidx.activity.result.ActivityResult;
 
 /**
  * VPN Service Plugin for Capacitor
@@ -19,61 +21,76 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 public class VpnServicePlugin extends Plugin {
 
     private static final String TAG = "VpnServicePlugin";
-    private static final int VPN_REQUEST_CODE = 1;
-
-    private boolean vpnStartPending = false;
-    private PluginCall pendingCall;
 
     @PluginMethod
     public void startVpn(PluginCall call) {
-        Log.d(TAG, "startVpn called");
+        Log.i(TAG, "=== startVpn() called ===");
 
         // Check if VPN permission is granted
         Intent intent = VpnService.prepare(getContext());
+        Log.i(TAG, "VpnService.prepare() returned: " + (intent == null ? "null (permission granted)" : "Intent (permission needed)"));
 
         if (intent != null) {
-            // Need user permission - save call and start activity
-            vpnStartPending = true;
-            pendingCall = call;
-            startActivityForResult(call, intent, VPN_REQUEST_CODE);
+            // Need user permission - launch activity for result
+            Log.i(TAG, "VPN permission required, launching permission dialog");
+            startActivityForResult(call, intent, "handleVpnPermissionResult");
         } else {
             // Permission already granted, start VPN
+            Log.i(TAG, "VPN permission already granted, calling doStartVpn()");
             doStartVpn(call);
         }
     }
 
-    @Override
-    protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
-        super.handleOnActivityResult(requestCode, resultCode, data);
+    @ActivityCallback
+    private void handleVpnPermissionResult(PluginCall call, ActivityResult result) {
+        Log.d(TAG, "handleVpnPermissionResult: resultCode=" + result.getResultCode());
 
-        if (requestCode == VPN_REQUEST_CODE && vpnStartPending) {
-            vpnStartPending = false;
-            if (resultCode == Activity.RESULT_OK && pendingCall != null) {
-                doStartVpn(pendingCall);
-            } else if (pendingCall != null) {
-                JSObject ret = new JSObject();
-                ret.put("success", false);
-                ret.put("requiresPermission", true);
-                ret.put("errorMessage", "VPN permission denied by user");
-                pendingCall.resolve(ret);
-            }
-            pendingCall = null;
+        if (call == null) {
+            Log.e(TAG, "PluginCall is null in handleVpnPermissionResult");
+            return;
+        }
+
+        if (result.getResultCode() == Activity.RESULT_OK) {
+            Log.d(TAG, "VPN permission granted by user");
+            doStartVpn(call);
+        } else {
+            Log.w(TAG, "VPN permission denied by user");
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            ret.put("requiresPermission", true);
+            ret.put("errorMessage", "VPN permission denied by user");
+            call.resolve(ret);
         }
     }
 
     private void doStartVpn(PluginCall call) {
+        Log.i(TAG, "=== doStartVpn() called ===");
         try {
-            Intent serviceIntent = new Intent(getContext(), StealthDetectVpnService.class);
-            serviceIntent.setAction(StealthDetectVpnService.ACTION_START);
-            getContext().startService(serviceIntent);
-
-            // Register for DNS events from the VPN service
+            // FIX: Register listeners BEFORE starting service to avoid race condition
+            Log.i(TAG, "Registering DNS event listener...");
             StealthDetectVpnService.setDnsEventListener(this::onDnsEvent);
+            Log.i(TAG, "Registering state change listener...");
             StealthDetectVpnService.setStateChangeListener(this::onStateChange);
+            Log.i(TAG, "Listeners registered successfully");
+
+            // Check if VPN is already running
+            boolean alreadyRunning = StealthDetectVpnService.isRunning();
+            Log.i(TAG, "VPN already running: " + alreadyRunning);
+
+            if (!alreadyRunning) {
+                Log.i(TAG, "Starting VPN service...");
+                Intent serviceIntent = new Intent(getContext(), StealthDetectVpnService.class);
+                serviceIntent.setAction(StealthDetectVpnService.ACTION_START);
+                getContext().startService(serviceIntent);
+                Log.i(TAG, "VPN service start intent sent");
+            } else {
+                Log.i(TAG, "VPN already running, just re-attached listeners");
+            }
 
             JSObject ret = new JSObject();
             ret.put("success", true);
             ret.put("requiresPermission", false);
+            ret.put("alreadyRunning", alreadyRunning);
             call.resolve(ret);
 
             // Notify JS of state change
@@ -82,7 +99,7 @@ public class VpnServicePlugin extends Plugin {
             stateEvent.put("timestamp", System.currentTimeMillis());
             notifyListeners("vpnStateChange", stateEvent);
 
-            Log.i(TAG, "VPN started successfully");
+            Log.i(TAG, "=== VPN started successfully ===");
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to start VPN", e);
@@ -153,39 +170,60 @@ public class VpnServicePlugin extends Plugin {
             call.resolve(ret);
         } else {
             // Need to request permission
-            vpnStartPending = false; // Not starting VPN, just requesting permission
-            pendingCall = call;
-            startActivityForResult(call, intent, VPN_REQUEST_CODE);
+            startActivityForResult(call, intent, "handlePermissionRequestResult");
         }
+    }
+
+    @ActivityCallback
+    private void handlePermissionRequestResult(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("granted", result.getResultCode() == Activity.RESULT_OK);
+        call.resolve(ret);
     }
 
     /**
      * Called when a DNS event is detected by the VPN service
+     * Note: This is called from a background thread, so we must post to main thread
      */
     private void onDnsEvent(DnsQueryInfo query) {
-        JSObject event = new JSObject();
-        event.put("timestamp", query.timestamp);
-        event.put("domain", query.domain);
-        event.put("queryType", query.queryType);
-        event.put("sourceApp", query.sourceApp);
-        event.put("sourcePort", query.sourcePort);
-        event.put("destinationIp", query.destinationIp);
-        event.put("blocked", query.blocked);
+        Log.i(TAG, "*** onDnsEvent received: " + query.domain + " ***");
+        // Must run on main thread for Capacitor event delivery
+        getActivity().runOnUiThread(() -> {
+            JSObject event = new JSObject();
+            event.put("timestamp", query.timestamp);
+            event.put("domain", query.domain);
+            event.put("queryType", query.queryType);
+            event.put("sourceApp", query.sourceApp);
+            event.put("sourcePort", query.sourcePort);
+            event.put("destinationIp", query.destinationIp);
+            event.put("blocked", query.blocked);
 
-        notifyListeners("dnsRequest", event);
+            Log.i(TAG, ">>> Delivering DNS event to JS: " + query.domain);
+            notifyListeners("dnsRequest", event);
+            Log.i(TAG, "<<< DNS event delivered to JS for: " + query.domain);
+        });
     }
 
     /**
      * Called when VPN state changes
+     * Note: This may be called from a background thread
      */
     private void onStateChange(String state, String errorMessage) {
-        JSObject event = new JSObject();
-        event.put("state", state);
-        event.put("timestamp", System.currentTimeMillis());
-        if (errorMessage != null) {
-            event.put("errorMessage", errorMessage);
-        }
+        // Must run on main thread for Capacitor event delivery
+        getActivity().runOnUiThread(() -> {
+            JSObject event = new JSObject();
+            event.put("state", state);
+            event.put("timestamp", System.currentTimeMillis());
+            if (errorMessage != null) {
+                event.put("errorMessage", errorMessage);
+            }
 
-        notifyListeners("vpnStateChange", event);
+            Log.d(TAG, "Delivering state change to JS: " + state);
+            notifyListeners("vpnStateChange", event);
+        });
     }
 }

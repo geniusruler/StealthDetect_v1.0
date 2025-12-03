@@ -174,14 +174,19 @@ public class StealthDetectVpnService extends VpnService {
     }
 
     private void startVpn() {
+        Log.i(TAG, "=== startVpn() called, isRunning=" + isRunning + " ===");
         if (isRunning) {
-            Log.w(TAG, "VPN already running");
+            Log.w(TAG, "VPN already running, returning early");
             return;
         }
 
         try {
             // Start as foreground service (required for Android 8+)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Android 14+ requires specifying the foreground service type
+                startForeground(NOTIFICATION_ID, createNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForeground(NOTIFICATION_ID, createNotification());
             }
 
@@ -223,12 +228,15 @@ public class StealthDetectVpnService extends VpnService {
             dnsQueriesIntercepted = 0;
             shouldRun = true;
 
+            Log.i(TAG, "VPN interface established, starting packet processor thread...");
+
             // Start packet processing thread
             vpnThread = new Thread(this::processPackets, "VPN-Packet-Processor");
             vpnThread.start();
 
             notifyStateChange("connected", null);
-            Log.i(TAG, "VPN started successfully");
+            Log.i(TAG, "=== VPN started successfully ===");
+            Log.i(TAG, "Listener status: dnsEventListener=" + (dnsEventListener != null) + ", stateChangeListener=" + (stateChangeListener != null));
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to start VPN", e);
@@ -294,7 +302,8 @@ public class StealthDetectVpnService extends VpnService {
             byte[] packet = new byte[32767];
             ByteBuffer responseBuffer = ByteBuffer.allocate(32767);
 
-            Log.i(TAG, "Packet processing thread started");
+            Log.i(TAG, "=== Packet processing thread started ===");
+            int logCounter = 0;
 
             while (shouldRun && !Thread.currentThread().isInterrupted()) {
                 try {
@@ -306,8 +315,14 @@ public class StealthDetectVpnService extends VpnService {
 
                     packetsProcessed++;
 
+                    // Log every 10th packet to avoid spam
+                    if (logCounter++ % 10 == 0) {
+                        Log.d(TAG, "Packet received: " + length + " bytes (total: " + packetsProcessed + ")");
+                    }
+
                     // Check if this is a DNS packet
                     if (DnsPacketParser.isDnsPacket(packet, length)) {
+                        Log.i(TAG, "DNS packet detected, parsing...");
                         // Parse the DNS query
                         DnsPacketParser.DnsParseResult dnsResult =
                                 DnsPacketParser.parse(packet, length);
@@ -361,6 +376,8 @@ public class StealthDetectVpnService extends VpnService {
      * Report a DNS query to the JavaScript layer
      */
     private void reportDnsQuery(DnsPacketParser.DnsParseResult dnsResult) {
+        Log.i(TAG, "reportDnsQuery called for: " + dnsResult.domain);
+
         // Clear old cached domains periodically
         long now = System.currentTimeMillis();
         if (now - lastDomainClearTime > DOMAIN_CACHE_TTL) {
@@ -370,11 +387,14 @@ public class StealthDetectVpnService extends VpnService {
 
         // Skip if we recently reported this domain
         if (recentDomains.contains(dnsResult.domain)) {
+            Log.d(TAG, "Skipping duplicate domain: " + dnsResult.domain);
             return;
         }
         recentDomains.add(dnsResult.domain);
 
         dnsQueriesIntercepted++;
+
+        Log.i(TAG, "Listener is " + (dnsEventListener != null ? "SET" : "NULL"));
 
         if (dnsEventListener != null) {
             DnsQueryInfo query = new DnsQueryInfo();
@@ -387,13 +407,17 @@ public class StealthDetectVpnService extends VpnService {
             query.blocked = false;
 
             try {
+                Log.i(TAG, "Calling dnsEventListener.onDnsEvent() for: " + dnsResult.domain);
                 dnsEventListener.onDnsEvent(query);
+                Log.i(TAG, "dnsEventListener.onDnsEvent() completed for: " + dnsResult.domain);
             } catch (Exception e) {
                 Log.e(TAG, "Error reporting DNS event", e);
             }
+        } else {
+            Log.w(TAG, "DNS event listener is NULL - cannot report event!");
         }
 
-        Log.d(TAG, "DNS Query: " + dnsResult.domain + " (" + dnsResult.queryType + ")");
+        Log.i(TAG, "DNS Query: " + dnsResult.domain + " (" + dnsResult.queryType + ")");
     }
 
     /**
