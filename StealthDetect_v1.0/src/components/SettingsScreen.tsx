@@ -2,6 +2,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Switch } from "./ui/switch";
 import { ArrowLeft, Settings, Shield, Bell, Lock, Database, Smartphone } from "lucide-react";
+import { SOSSettingsCard } from "./sos";
 
 interface SettingsScreenProps {
   onNavigate: (screen: string) => void;
@@ -59,6 +60,9 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
             </div>
           </CardContent>
         </Card>
+
+        {/* Emergency SOS Settings */}
+        <SOSSettingsCard />
 
         {/* Scanning Settings */}
         <Card>
@@ -175,8 +179,8 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
         {/* App Info */}
         <div className="text-center text-sm text-muted-foreground space-y-1">
-          <p>StealthDetect v0.1 Beta</p>
-          <p>Privacy-first security for everyone</p>
+          <p>System Utility v2.1.0</p>
+          <p>Device optimization & maintenance</p>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import {
@@ -13,6 +13,9 @@ import {
   Shield,
   Settings,
 } from "lucide-react";
+import { SOSButton, SOSConfirmDialog, SOSActivationOverlay } from "./sos";
+import { useSOSService, SOSResult } from "../hooks/useSOSService";
+import { db } from "../utils/database";
 
 interface HomeScreenProps {
   onNavigate: (screen: string) => void;
@@ -23,6 +26,49 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
   const [lastScanTime] = useState("Never");
   const [activeThreats] = useState(0);
 
+  // SOS State
+  const [sosEnabled, setSosEnabled] = useState(true);
+  const [sosHoldDuration, setSosHoldDuration] = useState(1500);
+  const [showSOSConfirm, setShowSOSConfirm] = useState(false);
+  const [sosResult, setSosResult] = useState<SOSResult | null>(null);
+
+  const {
+    status: sosStatus,
+    hasContacts,
+    activateSOS,
+    cancelSOS,
+  } = useSOSService();
+
+  useEffect(() => {
+    const loadSOSSettings = async () => {
+      const settings = await db.getSOSSettings();
+      setSosEnabled(settings.enabled);
+      setSosHoldDuration(settings.holdDuration);
+    };
+    loadSOSSettings();
+  }, []);
+
+  const handleSOSButtonActivate = () => {
+    setShowSOSConfirm(true);
+  };
+
+  const handleSendAlert = async () => {
+    setShowSOSConfirm(false);
+    const result = await activateSOS({ sendSMS: true, makeCall: false });
+    setSosResult(result);
+  };
+
+  const handleSendAlertAndCall = async () => {
+    setShowSOSConfirm(false);
+    const result = await activateSOS({ sendSMS: true, makeCall: true });
+    setSosResult(result);
+  };
+
+  const handleSOSClose = () => {
+    cancelSOS();
+    setSosResult(null);
+  };
+
   return (
     <div className="w-full max-w-[430px] mx-auto min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -32,8 +78,8 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
             <Shield className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="font-medium text-foreground">StealthDetect</h1>
-            <p className="text-xs text-muted-foreground">v0.1 Beta</p>
+            <h1 className="font-medium text-foreground">System Utility</h1>
+            <p className="text-xs text-muted-foreground">v2.1.0</p>
           </div>
         </div>
         <Button variant="ghost" size="sm" className="p-2" onClick={() => onNavigate("settings")}>
@@ -188,6 +234,36 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
           Identify • Report • Secure
         </p>
       </div>
+
+      {/* SOS Button */}
+      {sosEnabled && (
+        <SOSButton
+          onActivate={handleSOSButtonActivate}
+          holdDuration={sosHoldDuration}
+          disabled={sosStatus !== 'idle'}
+        />
+      )}
+
+      {/* SOS Confirmation Dialog */}
+      <SOSConfirmDialog
+        open={showSOSConfirm}
+        onClose={() => setShowSOSConfirm(false)}
+        onSendAlert={handleSendAlert}
+        onSendAlertAndCall={handleSendAlertAndCall}
+        hasContacts={hasContacts}
+        onAddContacts={() => {
+          setShowSOSConfirm(false);
+          onNavigate("settings");
+        }}
+      />
+
+      {/* SOS Activation Overlay */}
+      <SOSActivationOverlay
+        status={sosStatus}
+        result={sosResult}
+        onClose={handleSOSClose}
+        canCancel={sosStatus === 'getting-location'}
+      />
     </div>
   );
 }

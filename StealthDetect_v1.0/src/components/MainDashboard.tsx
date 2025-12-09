@@ -8,6 +8,9 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Shield, Play, RefreshCw, FileText, Pause, Globe, Map, Clock, Zap, Activity, ArrowLeft, ChevronRight, Settings, MoreHorizontal, Wifi, WifiOff } from "lucide-react";
 import { useVpnMonitor } from "../hooks/useVpnMonitor";
+import { SOSButton, SOSConfirmDialog, SOSActivationOverlay } from "./sos";
+import { useSOSService, SOSResult } from "../hooks/useSOSService";
+import { db } from "../utils/database";
 
 export interface ScanConfig {
   networkMonitoringDuration: number;
@@ -27,6 +30,19 @@ export function MainDashboard({ onNavigate, onStartScan }: MainDashboardProps) {
   const [scanDuration, setScanDuration] = useState(10000); // Default 10 seconds
   const [demoMode, setDemoMode] = useState(false); // Demo mode for simulating threats
 
+  // SOS State
+  const [sosEnabled, setSosEnabled] = useState(true);
+  const [sosHoldDuration, setSosHoldDuration] = useState(1500);
+  const [showSOSConfirm, setShowSOSConfirm] = useState(false);
+  const [sosResult, setSosResult] = useState<SOSResult | null>(null);
+
+  const {
+    status: sosStatus,
+    hasContacts,
+    activateSOS,
+    cancelSOS,
+  } = useSOSService();
+
   // Use VPN monitor hook for real-time data
   const {
     isConnected,
@@ -39,6 +55,36 @@ export function MainDashboard({ onNavigate, onStartScan }: MainDashboardProps) {
     toggleVpn,
     isUsingNative,
   } = useVpnMonitor();
+
+  useEffect(() => {
+    const loadSOSSettings = async () => {
+      const settings = await db.getSOSSettings();
+      setSosEnabled(settings.enabled);
+      setSosHoldDuration(settings.holdDuration);
+    };
+    loadSOSSettings();
+  }, []);
+
+  const handleSOSButtonActivate = () => {
+    setShowSOSConfirm(true);
+  };
+
+  const handleSendAlert = async () => {
+    setShowSOSConfirm(false);
+    const result = await activateSOS({ sendSMS: true, makeCall: false });
+    setSosResult(result);
+  };
+
+  const handleSendAlertAndCall = async () => {
+    setShowSOSConfirm(false);
+    const result = await activateSOS({ sendSMS: true, makeCall: true });
+    setSosResult(result);
+  };
+
+  const handleSOSClose = () => {
+    cancelSOS();
+    setSosResult(null);
+  };
 
   const handleStartScan = () => {
     setShowScanConfig(true);
@@ -497,6 +543,36 @@ export function MainDashboard({ onNavigate, onStartScan }: MainDashboardProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* SOS Button */}
+      {sosEnabled && (
+        <SOSButton
+          onActivate={handleSOSButtonActivate}
+          holdDuration={sosHoldDuration}
+          disabled={sosStatus !== 'idle'}
+        />
+      )}
+
+      {/* SOS Confirmation Dialog */}
+      <SOSConfirmDialog
+        open={showSOSConfirm}
+        onClose={() => setShowSOSConfirm(false)}
+        onSendAlert={handleSendAlert}
+        onSendAlertAndCall={handleSendAlertAndCall}
+        hasContacts={hasContacts}
+        onAddContacts={() => {
+          setShowSOSConfirm(false);
+          onNavigate("settings");
+        }}
+      />
+
+      {/* SOS Activation Overlay */}
+      <SOSActivationOverlay
+        status={sosStatus}
+        result={sosResult}
+        onClose={handleSOSClose}
+        canCancel={sosStatus === 'getting-location'}
+      />
     </div>
   );
 }
