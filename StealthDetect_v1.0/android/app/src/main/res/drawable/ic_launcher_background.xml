@@ -4,8 +4,8 @@
     android:height="108dp"
     android:viewportHeight="108"
     android:viewportWidth="108">
-    <!-- Sky blue background -->
+    <!-- Neutral gray background for System Utility -->
     <path
-        android:fillColor="#4FC3F7"
+        android:fillColor="#607D8B"
         android:pathData="M0,0h108v108h-108z" />
 </vector>
