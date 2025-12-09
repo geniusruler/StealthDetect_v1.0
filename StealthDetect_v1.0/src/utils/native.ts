@@ -320,6 +320,145 @@ export const share = {
   },
 };
 
+// Geolocation for SOS
+export interface GeoPosition {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+}
+
+export const geolocation = {
+  async getCurrentPosition(timeout = 10000): Promise<GeoPosition | null> {
+    // Web fallback using browser API
+    if (isBrowserEnvironment || !isNative()) {
+      return new Promise((resolve) => {
+        if (!('geolocation' in navigator)) {
+          console.log('[Preview] Geolocation not available');
+          resolve(null);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          }),
+          () => resolve(null),
+          { timeout, enableHighAccuracy: true }
+        );
+      });
+    }
+
+    try {
+      const pkg = '@capacitor' + '/' + 'geolocation';
+      const { Geolocation } = await dynamicImport(pkg);
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout,
+      });
+      return {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      };
+    } catch (error) {
+      console.error('[Geolocation] Error:', error);
+      return null;
+    }
+  },
+
+  async checkPermissions(): Promise<'granted' | 'denied' | 'prompt'> {
+    if (isBrowserEnvironment || !isNative()) {
+      return 'granted'; // Assume granted in browser
+    }
+
+    try {
+      const pkg = '@capacitor' + '/' + 'geolocation';
+      const { Geolocation } = await dynamicImport(pkg);
+      const status = await Geolocation.checkPermissions();
+      return status.location as 'granted' | 'denied' | 'prompt';
+    } catch {
+      return 'denied';
+    }
+  },
+
+  async requestPermissions(): Promise<boolean> {
+    if (isBrowserEnvironment || !isNative()) {
+      return true;
+    }
+
+    try {
+      const pkg = '@capacitor' + '/' + 'geolocation';
+      const { Geolocation } = await dynamicImport(pkg);
+      const status = await Geolocation.requestPermissions();
+      return status.location === 'granted';
+    } catch {
+      return false;
+    }
+  },
+};
+
+// SMS for SOS (uses native SMS app)
+export const sms = {
+  async send(phoneNumbers: string[], message: string): Promise<boolean> {
+    if (isBrowserEnvironment) {
+      console.log('[Preview] SMS would be sent to:', phoneNumbers, 'Message:', message);
+      return true;
+    }
+
+    try {
+      // Build SMS URI - multiple recipients joined by comma
+      const recipients = phoneNumbers.join(',');
+      const encodedMessage = encodeURIComponent(message);
+      const smsUri = `sms:${recipients}?body=${encodedMessage}`;
+
+      // Use Capacitor App to open SMS
+      const pkg = '@capacitor' + '/' + 'app';
+      const { App } = await dynamicImport(pkg);
+      await App.openUrl({ url: smsUri });
+      return true;
+    } catch (error) {
+      console.error('[SMS] Error:', error);
+      // Fallback: try window.open
+      try {
+        const recipients = phoneNumbers.join(',');
+        const encodedMessage = encodeURIComponent(message);
+        window.open(`sms:${recipients}?body=${encodedMessage}`, '_system');
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  },
+};
+
+// Phone call for SOS
+export const phone = {
+  async call(number: string): Promise<boolean> {
+    if (isBrowserEnvironment) {
+      console.log('[Preview] Would call:', number);
+      return true;
+    }
+
+    try {
+      const telUri = `tel:${number}`;
+      const pkg = '@capacitor' + '/' + 'app';
+      const { App } = await dynamicImport(pkg);
+      await App.openUrl({ url: telUri });
+      return true;
+    } catch (error) {
+      console.error('[Phone] Error:', error);
+      // Fallback
+      try {
+        window.open(`tel:${number}`, '_system');
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  },
+};
+
 export default {
   isNative,
   isIOS,
@@ -331,4 +470,7 @@ export default {
   statusBar,
   splashScreen,
   share,
+  geolocation,
+  sms,
+  phone,
 };
