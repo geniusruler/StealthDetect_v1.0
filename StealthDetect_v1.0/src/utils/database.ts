@@ -77,6 +77,46 @@ export interface PINHash {
   updatedAt: string;
 }
 
+export interface EmergencyContact {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  relationship: string;
+  isPrimary: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SOSSettings {
+  enabled: boolean;
+  enableSMS: boolean;
+  enableCall: boolean;
+  enableAudioRecording: boolean;
+  enablePhotoCapture: boolean;
+  holdDuration: number; // milliseconds, default 1500
+  emergencyNumber: string; // "911"
+  lastUpdated: string;
+}
+
+export interface SOSActivationLog {
+  id: string;
+  timestamp: string;
+  location: {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+  } | null;
+  actions: {
+    smsSent: boolean;
+    smsRecipients: string[];
+    callMade: boolean;
+    audioRecorded: boolean;
+    photoTaken: boolean;
+  };
+  status: 'completed' | 'partial' | 'failed';
+  errorDetails?: string;
+}
+
 // ==================== Database Keys ====================
 
 const DB_KEYS = {
@@ -87,6 +127,10 @@ const DB_KEYS = {
   PIN_HASHES: 'pin_hashes',
   LAST_UPDATE: 'ioc_last_update',
   DB_VERSION: 'db_version',
+  // SOS Feature
+  EMERGENCY_CONTACTS: 'sos_emergency_contacts',
+  SOS_SETTINGS: 'sos_settings',
+  SOS_ACTIVATION_LOG: 'sos_activation_log',
 };
 
 const CURRENT_DB_VERSION = '1.0.0';
@@ -363,6 +407,120 @@ class Database {
     const pins = await this.getPINHashes();
     const pin = pins.find(p => p.type === type);
     return pin ? pin.hash : null;
+  }
+
+  // ==================== Emergency Contacts ====================
+
+  async getEmergencyContacts(): Promise<EmergencyContact[]> {
+    const data = await secureStorage.getItem(DB_KEYS.EMERGENCY_CONTACTS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  async addEmergencyContact(contact: Omit<EmergencyContact, 'id' | 'createdAt' | 'updatedAt'>): Promise<EmergencyContact> {
+    const contacts = await this.getEmergencyContacts();
+    const now = new Date().toISOString();
+
+    const newContact: EmergencyContact = {
+      ...contact,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // If this is marked as primary, unmark others
+    if (newContact.isPrimary) {
+      contacts.forEach(c => c.isPrimary = false);
+    }
+
+    contacts.push(newContact);
+    await secureStorage.setItem(DB_KEYS.EMERGENCY_CONTACTS, JSON.stringify(contacts));
+    return newContact;
+  }
+
+  async updateEmergencyContact(id: string, updates: Partial<Omit<EmergencyContact, 'id' | 'createdAt'>>): Promise<void> {
+    const contacts = await this.getEmergencyContacts();
+    const index = contacts.findIndex(c => c.id === id);
+
+    if (index === -1) return;
+
+    // If setting as primary, unmark others
+    if (updates.isPrimary) {
+      contacts.forEach(c => c.isPrimary = false);
+    }
+
+    contacts[index] = {
+      ...contacts[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await secureStorage.setItem(DB_KEYS.EMERGENCY_CONTACTS, JSON.stringify(contacts));
+  }
+
+  async deleteEmergencyContact(id: string): Promise<void> {
+    const contacts = await this.getEmergencyContacts();
+    const filtered = contacts.filter(c => c.id !== id);
+    await secureStorage.setItem(DB_KEYS.EMERGENCY_CONTACTS, JSON.stringify(filtered));
+  }
+
+  // ==================== SOS Settings ====================
+
+  async getSOSSettings(): Promise<SOSSettings> {
+    const data = await secureStorage.getItem(DB_KEYS.SOS_SETTINGS);
+    if (data) {
+      return JSON.parse(data);
+    }
+    // Return default settings
+    return {
+      enabled: true,
+      enableSMS: true,
+      enableCall: true,
+      enableAudioRecording: false,
+      enablePhotoCapture: false,
+      holdDuration: 1500,
+      emergencyNumber: '911',
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+
+  async updateSOSSettings(updates: Partial<SOSSettings>): Promise<void> {
+    const current = await this.getSOSSettings();
+    const updated = {
+      ...current,
+      ...updates,
+      lastUpdated: new Date().toISOString(),
+    };
+    await secureStorage.setItem(DB_KEYS.SOS_SETTINGS, JSON.stringify(updated));
+  }
+
+  // ==================== SOS Activation Log ====================
+
+  async getSOSActivationLogs(limit?: number): Promise<SOSActivationLog[]> {
+    const data = await secureStorage.getItem(DB_KEYS.SOS_ACTIVATION_LOG);
+    const logs: SOSActivationLog[] = data ? JSON.parse(data) : [];
+
+    // Sort by timestamp descending
+    logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return limit ? logs.slice(0, limit) : logs;
+  }
+
+  async addSOSActivationLog(log: Omit<SOSActivationLog, 'id' | 'timestamp'>): Promise<SOSActivationLog> {
+    const logs = await this.getSOSActivationLogs();
+
+    const newLog: SOSActivationLog = {
+      ...log,
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+    };
+
+    logs.push(newLog);
+
+    // Keep only last 100 logs
+    const limited = logs.slice(-100);
+
+    await secureStorage.setItem(DB_KEYS.SOS_ACTIVATION_LOG, JSON.stringify(limited));
+    return newLog;
   }
 
   // ==================== Default IoCs ====================
