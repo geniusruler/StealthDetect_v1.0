@@ -2,7 +2,7 @@
 
 # StealthDetect
 
-StealthDetect is a stalkerware detection app for mobile devices that uses network traffic analysis to detect indicators of compromise (IOCs). The app creates a local VPN to intercept DNS queries, comparing them against a bundled threat intelligence database to identify stalkerware, spyware, and other surveillance tools.
+StealthDetect is a stalkerware detection app for mobile devices that uses network traffic analysis to detect indicators of compromise (IOCs). The app creates a local VPN to intercept DNS queries, comparing them against a bundled threat intelligence database to identify stalkerware
 
 ## Features
 
