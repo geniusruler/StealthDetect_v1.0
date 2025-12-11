@@ -115,7 +115,7 @@ The app includes a bundled `All_IOCs.json` file containing:
 
 ## License
 
-The IOCs are distributed under the Creative Common BY-NC-SA licence. This imply a non commercial use of them. Please respect this license and ask ECHAP for any question related to that.
+The IOCs are distributed under the Creative Common BY-NC-SA license. This imply a non commercial use of them. Please respect this license and ask ECHAP for any question related to that.
 
 ---
 
