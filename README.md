@@ -116,6 +116,7 @@ The app includes a bundled `All_IOCs.json` file containing:
 ## License
 
 The IOCs are distributed under the Creative Common BY-NC-SA license. This imply a non commercial use of them. Please respect this license and ask ECHAP for any question related to that.
+If any research or any related matter is to be done about this project, You MUST ask the permission of the StealhDetect team. You can contact us at StealthDetect@proton.me
 
 ---
 
